@@ -26,21 +26,65 @@ curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-lin
 chmod +x repoman
 ```
 
-Swap `linux-amd64` for `linux-arm64`, `darwin-amd64`, or `darwin-arm64` to
-match the target machine. The `/releases/latest/download/` path never
-changes shape across releases, so this exact command keeps working on every
-future release without being updated. To verify the download:
+Swap `linux-amd64` for the asset matching the target machine:
+
+| OS | Architecture | Asset |
+|---|---|---|
+| Linux | x86-64 | `repoman-linux-amd64` |
+| Linux | ARM64 | `repoman-linux-arm64` |
+| macOS | Intel | `repoman-darwin-amd64` |
+| macOS | Apple Silicon | `repoman-darwin-arm64` |
+| Windows | x86-64 | `repoman-windows-amd64.exe` |
+| Windows | ARM64 | `repoman-windows-arm64.exe` |
+| FreeBSD | x86-64 | `repoman-freebsd-amd64` |
+| FreeBSD | ARM64 | `repoman-freebsd-arm64` |
+| OpenBSD | x86-64 | `repoman-openbsd-amd64` |
+| OpenBSD | ARM64 | `repoman-openbsd-arm64` |
+| NetBSD | x86-64 | `repoman-netbsd-amd64` |
+| NetBSD | ARM64 | `repoman-netbsd-arm64` |
+| DragonFly BSD | x86-64 | `repoman-dragonfly-amd64` |
+
+DragonFly BSD is x86-64 only -- Go itself has no `dragonfly/arm64` port.
+The two OpenBSD binaries come out dynamically linked against the
+system's own `/usr/libexec/ld.so`, unlike the other eleven -- this is
+long-standing, documented Go-on-OpenBSD behaviour (its W^X/pledge
+exec-protection model requires it), not a build issue, and that loader
+is part of every real OpenBSD install, not an extra dependency to fetch.
+
+The `/releases/latest/download/` path never changes shape across releases,
+so any of these exact commands keeps working on every future release
+without being updated. To verify the download:
 
 ```
 curl -LO https://github.com/ha1tch/gorepoman/releases/latest/download/checksums.txt
 sha256sum --ignore-missing -c checksums.txt
 ```
 
+On Windows (PowerShell): `curl.exe` is built in on Windows 10/11, and
+`Get-FileHash` replaces `sha256sum` -- check its output against the
+matching line in `checksums.txt` by hand, since `-c` isn't available:
+
+```
+curl.exe -LO https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-windows-amd64.exe
+curl.exe -LO https://github.com/ha1tch/gorepoman/releases/latest/download/checksums.txt
+Get-FileHash repoman-windows-amd64.exe -Algorithm SHA256
+```
+
+On the BSDs, the base install typically ships `sha256` rather than GNU
+coreutils' `sha256sum` -- check its output against the matching line in
+`checksums.txt` by hand:
+
+```
+sha256 repoman-freebsd-amd64
+```
+
 ### Building from source instead
 
 Only needed for development on `gorepoman` itself, or a platform outside
-the four the release binaries cover. Requires Go 1.21 or later; no
-third-party dependencies.
+the thirteen the release binaries cover. Requires Go 1.21 or later; no
+third-party dependencies. `make cross` builds all thirteen release
+targets locally into `dist/` (see the `Makefile`), or just build for the
+current platform:
 
 ```
 go build -o repoman ./cmd/repoman

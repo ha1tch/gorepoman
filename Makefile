@@ -5,8 +5,13 @@ VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=v$(VERSION)
 
 # Matches .goreleaser.yaml's build matrix exactly -- keep the two in sync
-# if either changes.
-PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+# if either changes. DragonFly BSD has no arm64 -- Go itself has no
+# dragonfly/arm64 port (confirmed via `go tool dist list`), so it's
+# listed once here, amd64 only, rather than as part of a uniform
+# cartesian product that would try (and fail) to build it.
+PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 \
+             freebsd/amd64 freebsd/arm64 openbsd/amd64 openbsd/arm64 netbsd/amd64 netbsd/arm64 \
+             dragonfly/amd64
 
 DIST := dist
 
@@ -50,7 +55,9 @@ cross: ## Cross-compile every release target into dist/ (CGO_ENABLED=0, matches 
 	@mkdir -p $(DIST)
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; \
-		out=$(DIST)/repoman-$$os-$$arch; \
+		ext=""; \
+		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
+		out=$(DIST)/repoman-$$os-$$arch$$ext; \
 		echo "  $$os/$$arch -> $$out"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -ldflags "$(LDFLAGS)" -o $$out $(PKG) || exit 1; \
 	done

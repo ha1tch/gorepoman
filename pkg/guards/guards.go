@@ -28,6 +28,7 @@ package guards
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -107,7 +108,7 @@ func newEnv() (*env, error) {
 		headRe:        regexp.MustCompile(`(?m)^### (` + gpRe + `\d+[a-z]?)\.\s*(.*)$`),
 		lastRe:        regexp.MustCompile(`(?m)^- \*\*Last exercised[^:*]*:\*\*\s*(.*(?:\n[ \t]+\S.*)*)`),
 		tableInvokeRe: regexp.MustCompile(`(?m)^\|\s*(` + gpRe + `\d+[a-z])\s*\|[^|]*\|[^|]*\|\s*` + "`" + `([^` + "`" + `]+)` + "`" + `\s*\|`),
-		knownIssues:   root + "/" + cfg.KnownIssues,
+		knownIssues:   filepath.Join(root, cfg.KnownIssues),
 	}, nil
 }
 
@@ -151,7 +152,7 @@ func (e *env) parse() (string, []guard, error) {
 // previousReleaseDate returns the date of the SECOND changelog entry --
 // i.e. the previous release: the default staleness horizon.
 func (e *env) previousReleaseDate() string {
-	b, err := os.ReadFile(e.root + "/" + e.cfg.Changelog)
+	b, err := os.ReadFile(filepath.Join(e.root, e.cfg.Changelog))
 	if err != nil {
 		return "1970-01-01"
 	}

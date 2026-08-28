@@ -15,9 +15,21 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
+      - freebsd
+      - openbsd
+      - netbsd
+      - dragonfly
     goarch:
       - amd64
       - arm64
+    # DragonFly BSD is x86-64 only -- Go itself has no dragonfly/arm64
+    # port (confirmed via `go tool dist list`), so the arm64 leg of the
+    # otherwise-uniform goos x goarch matrix has to be excluded here or
+    # the build fails outright.
+    ignore:
+      - goos: dragonfly
+        goarch: arm64
     ldflags:
       - -s -w -X main.version={{ .Version }}
 
@@ -27,9 +39,22 @@ builds:
 # carries no version: the /releases/latest/download/<name> URL then
 # never changes shape across releases, so a bootstrap command written
 # once keeps working on every future release without being updated.
+# The .exe suffix is conditional on Windows specifically -- Windows
+# won't execute a binary without it, and no other platform may have it
+# (a bare "repoman-linux-amd64.exe" would be wrong).
+#
+# Note on OpenBSD specifically: its two binaries come out dynamically
+# linked against /usr/libexec/ld.so regardless of CGO_ENABLED -- this is
+# long-standing, documented Go-on-OpenBSD behaviour (OpenBSD's own
+# W^X/pledge exec-protection model requires it), not a build
+# misconfiguration, and /usr/libexec/ld.so is part of every real OpenBSD
+# base install, not an extra dependency. The other six platforms produce
+# genuinely static binaries; OpenBSD's two are still fully self-contained
+# in practice, just not "static" in the strict ldd sense.
 archives:
   - format: binary
-    name_template: "repoman-{{ .Os }}-{{ .Arch }}"
+    name_template: >-
+      repoman-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
 
 checksum:
   name_template: "checksums.txt"
@@ -59,4 +84,21 @@ release:
     curl -LO https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64
     curl -LO https://github.com/ha1tch/gorepoman/releases/latest/download/checksums.txt
     sha256sum --ignore-missing -c checksums.txt
+    ```
+
+    On Windows (PowerShell), swap the asset name and use `Get-FileHash`
+    against the matching line in `checksums.txt` instead of `sha256sum`:
+
+    ```
+    curl.exe -LO https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-windows-amd64.exe
+    curl.exe -LO https://github.com/ha1tch/gorepoman/releases/latest/download/checksums.txt
+    Get-FileHash repoman-windows-amd64.exe -Algorithm SHA256
+    ```
+
+    On the BSDs, the base install typically ships `sha256` rather than
+    GNU coreutils' `sha256sum` -- check its output against the matching
+    line in `checksums.txt` by hand:
+
+    ```
+    sha256 repoman-freebsd-amd64
     ```

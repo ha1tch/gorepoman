@@ -101,6 +101,51 @@
   original manual cross-compile pass, confirming the build is
   deterministic.
 
+- **Added Windows to the release matrix -- six targets now, not four:**
+  `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`,
+  `windows-amd64.exe`, `windows-arm64.exe`. Checked for real portability
+  risk before touching any release config, not assumed safe just because
+  `CGO_ENABLED=0` cross-compilation succeeds: found two places in
+  `guards.go` building paths via manual `root + "/" + ...` string
+  concatenation, inconsistent with every other package in this codebase
+  (which uses `filepath.Join` throughout). Fixed both to use
+  `filepath.Join`. Confirmed the Windows cross-compile succeeded both
+  before and after that fix -- the manual concatenation wasn't actually
+  broken on Windows (the OS accepts forward slashes), but leaving it
+  inconsistent with the rest of the codebase's own convention wasn't
+  right either. `.goreleaser.yaml`'s `archives.name_template` now adds
+  `.exe` conditionally (`{{ if eq .Os "windows" }}`) -- present only for
+  Windows, absent for the other four, so the same `/releases/latest/
+  download/` bootstrap pattern still holds. `Makefile`'s `cross` target
+  updated identically (same conditional suffix logic, plain shell this
+  time). All six targets actually built via `make cross`, not just
+  configured: `file` confirms correct PE32+/ELF/Mach-O format and
+  architecture for each, matching what `.goreleaser.yaml` will produce
+  from the same source.
+
+- **Added the BSD family to the release matrix -- thirteen targets now,**
+  **not six:** FreeBSD, OpenBSD, and NetBSD (amd64 and arm64 each), plus
+  DragonFly BSD (amd64 only -- confirmed via `go tool dist list` that Go
+  has no `dragonfly/arm64` port at all, not a choice made here).
+  `.goreleaser.yaml`'s build matrix now excludes that one combination
+  explicitly (`ignore: [{goos: dragonfly, goarch: arm64}]`) rather than
+  assuming a uniform `goos` x `goarch` product would just work.
+  Checked for OS-specific code before touching any config, not assumed
+  safe: `doctor`'s own `runtime.GOOS` switch already falls through
+  correctly to an honest "unconfirmed platform" report for anything it
+  doesn't specifically recognise (already-correct, already-documented
+  behaviour, not something that needed changing). All thirteen targets
+  actually cross-compiled via `make cross`, not just added to config --
+  `file` confirms correct format and architecture for every one. One
+  genuinely interesting, verified-not-assumed finding along the way: the
+  two OpenBSD binaries come out dynamically linked against
+  `/usr/libexec/ld.so`, unlike all eleven other targets. Checked against
+  Go's own issue tracker before treating this as expected rather than a
+  build problem -- this is long-standing, intentional Go-on-OpenBSD
+  behaviour (OpenBSD's W^X/pledge exec-protection model requires it),
+  and that loader ships as part of every real OpenBSD install, not an
+  extra dependency the binary would need someone to separately provide.
+
 ## [0.3.0] - 2026-08-28
 
 A full audit pass across every syntactic-role classifier, requested
