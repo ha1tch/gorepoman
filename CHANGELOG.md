@@ -1,5 +1,103 @@
 # Changelog
 
+## [0.7.0] - 2026-08-28
+
+- **Fixed `register add` refusing on a genuinely empty table** (header +
+  separator, zero data rows) with the misleading message "cannot locate
+  the status table" -- confirmed against source: the row-detector only
+  ever searched for rows matching the ID pattern, so a table with zero
+  such rows produced zero matches and the same refusal as no table at
+  all, even though a perfectly valid table was right there. This was
+  already a known, previously-documented limitation (the docs described
+  a "genesis row" workaround), never actually fixed at the source until
+  now. Fixed: when no ID-matching row exists, `add` now anchors after the
+  table's own header ("| ID |...") and separator line instead, so a
+  brand-new register with a real header but no rows yet works with no
+  seed row required. Confirmed against the exact previously-failing
+  case, confirmed `register check` passes on the result, and confirmed
+  no regression against the existing (genesis-row-based) test fixtures --
+  full selftest still 86/86.
+- **`docs/repoman-030-getting-started.md` had a real, substantial gap**
+  **missed in the earlier documentation-fix pass**: its entire "Install"
+  section and the worked `doctor` example were still 100% Python
+  (`Requirements: Python 3.10...`, a sample `doctor` run showing
+  `[OK] Python 3.12.3`), inconsistent with the command syntax elsewhere
+  in the same file, which had already been fixed. Found while actually
+  rendering the doc into HTML for the new Pages mirror below -- reading
+  the rendered output surfaced what a syntax-only sweep had missed.
+  Rewrote the install section (binary-first, matching the README),
+  the `doctor` explanation and sample output (Go version, not Python),
+  and a remaining bare `python3 str_replace_extended.py selftest`
+  reference. Swept the other nine docs for the same class of staleness;
+  the one remaining `.py` reference found (`repoman-090-configuration.md`'s
+  example release-gate config, `"run": "python3 scripts/my_gate.py"`) is
+  a legitimate generic example of a user's own custom script, not a
+  claim about gorepoman itself, and was left as-is.
+- **New: a GitHub Pages mirror of the release binaries and documentation**
+  (`.github/workflows/pages.yml`, `tools/build_site.py`), built the same
+  way as the ZSP project's own site (`actions/upload-pages-artifact` +
+  `actions/deploy-pages`, matching an already-proven pattern rather than
+  inventing a new one). This exists for one specific reason: an agent
+  that can reach the binary well enough to be doing anything at all may
+  still, for reasons that were never fully diagnosed (network policy,
+  a transient issue, restricted tool permissions in that specific
+  sandbox), be unable to reach `github.com/releases` or search-discover
+  the repository's own docs. The Pages site is a genuinely independent
+  access path -- a different host, plain static file GETs, no
+  release-asset redirect through `api.github.com` -- mirroring the exact
+  same binaries (built via `make cross`, the same target already used
+  and tested locally) and all ten docs, rendered to HTML. Triggered on
+  the same tag push the real release fires on, deliberately not on every
+  push to main, so the mirror always reflects an actual tagged release,
+  never an untested main-branch build passed off as one. README and the
+  `repoman-tools` skill both updated to name the mirror as a fallback.
+
+## [0.6.1] - 2026-08-28
+
+- **Fixed a real, confirmed gap in `strreplace`'s atomic guarantee: when a**
+  **file's syntax could not be independently verified at all (validator**
+  **returns "unverifiable", not "verified and bad"), `atomic: true` did**
+  **not refuse -- it silently proceeded to write the file anyway,** exactly
+  as if validation had passed. Root-caused via `v.Validated.(bool)`'s own
+  Go semantics: a `nil` interface value fails that type assertion (`ok ==
+  false`), so the refusal branch -- gated on `ok && !vb` -- was skipped
+  entirely for the unverifiable case, not just the verified-bad case it
+  was written for. Confirmed against a real field incident, not a
+  synthetic worry: a toolchain-free bootstrap (the `gorepoman` binary
+  itself needs no Go toolchain to run -- that was always the point of
+  shipping a static binary -- but `gofmt`, used to independently verify
+  `.go` file edits, still does) hit this exactly, twice, in two
+  independent sessions. "gofmt unavailable" is not a rare misconfiguration
+  in that scenario -- it is the *normal* state of any toolchain-free
+  bootstrap on a Go project, which means this bug was not an occasional
+  flake; it would have silently broken the atomic guarantee on `.go`
+  files every single time someone followed the tool's own documented,
+  intended install path (binary only, no toolchain) on a Go repository.
+  Fixed: atomic mode now explicitly refuses (`cls: "syntax-unverifiable"`)
+  when a touched file's syntax cannot be independently checked, with a
+  message naming the fix (install the needed tool, or set `atomic:false`
+  to proceed without the guarantee) rather than silently downgrading a
+  strong promise to a weaker one nobody asked for. Non-atomic mode's
+  existing, deliberately different contract (best-effort: drop what can't
+  be verified, keep the rest) is untouched -- confirmed unaffected by
+  direct testing, not just left alone on the assumption it would be.
+  New selftest check 15 covers this specifically, using a test-only
+  override (`REPOMAN_TEST_FORCE_NO_GOFMT`) rather than a conditional
+  skip, since `WhichGofmt`'s own fallback paths do a real filesystem stat
+  on fixed locations that no environment-variable manipulation alone can
+  reliably hide -- meaning a naive conditional test (matching the
+  existing check 6's own pattern) would silently never exercise the real
+  code path on any host that happens to have gofmt installed, which is
+  most development and CI machines, including the one this was built and
+  tested on.
+- Verified the CI-published binary release infrastructure itself is not
+  the problem here and needs no fix: the documented bootstrap command
+  (`curl -L .../releases/latest/download/repoman-linux-amd64`) resolves
+  and runs correctly, and even a plain shallow `git clone` surfaces the
+  release tag via `git tag -l`. A session concluding "no tagged release
+  published yet" during this investigation was not describing a real
+  infrastructure gap.
+
 ## [0.6.0] - 2026-08-28
 
 - **`relcore` now runs `badcode` automatically, unconditionally, as the**

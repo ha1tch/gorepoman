@@ -385,11 +385,27 @@ func Run(args []string) int {
 		text := reg.Text
 		rowRe := regexp.MustCompile(`(?m)^\| ` + reg.idAlt + ` \|.*$`)
 		rowMatches := rowRe.FindAllStringIndex(text, -1)
+		var lastRowEnd int
 		if len(rowMatches) == 0 {
-			fmt.Fprintln(os.Stderr, "cannot locate the status table")
-			return 1
+			// No existing row matches the ID pattern -- but a genuinely
+			// empty table (header + separator, zero data rows yet) is a
+			// real, valid table, not "no table located". Anchor after the
+			// status table's own header+separator instead: the header row
+			// starts with "| ID |" (the documented column name), followed
+			// immediately by a markdown table separator line. Matching
+			// that pair specifically, not just any separator row in the
+			// file, avoids anchoring on an unrelated table elsewhere in
+			// the document (a worked example in prose, for instance).
+			headerRe := regexp.MustCompile(`(?m)^\| ?ID ?\|.*\n\|[-:| ]+\|\s*$`)
+			hm := headerRe.FindStringIndex(text)
+			if hm == nil {
+				fmt.Fprintln(os.Stderr, "cannot locate the status table")
+				return 1
+			}
+			lastRowEnd = hm[1]
+		} else {
+			lastRowEnd = rowMatches[len(rowMatches)-1][1]
 		}
-		lastRowEnd := rowMatches[len(rowMatches)-1][1]
 
 		bStr := blocks
 		if bStr == "" {

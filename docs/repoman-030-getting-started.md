@@ -2,14 +2,20 @@
 
 ## Install
 
-Clone the repository, or copy its files into yours — conventionally under
-`scripts/` or as a sibling `repoman/` directory. The tools are plain files
-at this repository's own root, not a package to import, so "install" mostly
-means "have the `.py` files somewhere on disk you can point at."
+No toolchain required -- it's a single static binary:
 
-Requirements: Python 3.10 or later, no third-party dependencies for the
-core tools. A handful of optional external tools unlock *better* validation
-for specific file types but nothing requires them — see `doctor` below.
+```
+curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o repoman
+chmod +x repoman
+```
+
+Swap `linux-amd64` for the platform in use -- see the README for the full
+table (Linux/macOS/Windows/FreeBSD/OpenBSD/NetBSD/DragonFly, amd64 and
+arm64). Building from source instead requires Go 1.21 or later and no
+third-party dependencies: `go build -o repoman ./cmd/repoman`.
+
+A handful of optional external tools unlock *better* validation for
+specific file types but nothing requires them -- see `doctor` below.
 
 ## Run `doctor` first
 
@@ -17,13 +23,13 @@ for specific file types but nothing requires them — see `doctor` below.
 repoman doctor
 ```
 
-This is an environment diagnostic, not a pass/fail test. It reports your
-Python version, your platform, and which of four optional external tools
-this environment has — `gofmt`, `bash`, `node`, PyYAML — each with what it
+This is an environment diagnostic, not a pass/fail test. It reports the Go
+version this binary was compiled with, the current platform, and which of
+four optional external tools this environment has — `gofmt`, `bash`, `node`, PyYAML — each with what it
 specifically enables:
 
 ```
-[OK] Python 3.12.3 (>= 3.10, fine)
+[OK] Go 1.27.0 (>= 1.21 (this project's go.mod floor), fine)
 [OK] Platform: Ubuntu 24.04.4 LTS
 
 [OK] gofmt (/usr/local/go/bin/gofmt) -- usage: gofmt [flags] [path ...]
@@ -39,13 +45,18 @@ specifically enables:
      enables: real yaml.safe_load validation for .yaml/.yml substitutions
 ```
 
+(`pyyaml` above is a real dependency of this Go binary too, not a leftover
+-- YAML validation shells out to `python3 -c "import yaml..."` under the
+hood, the same as the `.py` and JSON validators shell out to their own
+respective checkers.)
+
 None of these are required. Every optional tool has a documented fallback
 — a heuristic check, or an honest "not independently verified" — when it's
 absent, and `selftest` passes cleanly either way. `doctor` exists so that's
 a visible, informed choice rather than a silent one: you'll know from the
 first run whether an edit to a `.go` file is getting real `gofmt`
 validation or the heuristic path. `--quiet` drops the per-tool detail and
-just confirms the Python/platform baseline.
+just confirms the Go/platform baseline.
 
 ## Run `selftest` — the actual acceptance gate
 
@@ -67,11 +78,11 @@ back to plain, careful manual editing rather than trusting `ed`/
 `str_replace_extended` in that state, and flag it before doing anything
 else.
 
-`str_replace_extended.py`'s own selftest (`python3
-str_replace_extended.py selftest`) and `ed.py`'s own (`repoman ed
-selftest`) can each also be run standalone — `selftest.py` already calls
-both as part of its own run, but running one in isolation is useful when
-you're specifically debugging that tool rather than the whole suite.
+`strreplace`'s own selftest (`repoman strreplace selftest`) and `ed`'s
+own (`repoman ed selftest`) can each also be run standalone — `selftest`
+already calls both as part of its own run, but running one in isolation
+is useful when you're specifically debugging that tool rather than the
+whole suite.
 
 ## Opting in: `.repoman.json`
 

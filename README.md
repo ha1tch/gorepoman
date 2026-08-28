@@ -26,6 +26,21 @@ curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-lin
 chmod +x repoman
 ```
 
+If `github.com/releases` isn't reachable from a given environment for
+any reason (network policy, a transient issue, restricted tool
+permissions), the same binaries and the full documentation are also
+mirrored as a plain static site at
+[ha1tch.github.io/gorepoman](https://ha1tch.github.io/gorepoman/) --
+built by CI from the same tagged release, a genuinely independent
+access path (different host, plain static files, no release-asset
+redirect through `api.github.com`), not just the same thing linked
+twice:
+
+```
+curl -L https://ha1tch.github.io/gorepoman/bin/repoman-linux-amd64 -o repoman
+chmod +x repoman
+```
+
 Swap `linux-amd64` for the asset matching the target machine:
 
 | OS | Architecture | Asset |

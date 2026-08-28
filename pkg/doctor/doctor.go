@@ -91,6 +91,15 @@ type Report struct {
 // a real bug ships; check the obvious places before giving up and
 // reporting "not independently verified".
 func WhichGofmt() string {
+	// Test-only override: makes the "gofmt genuinely unavailable" case
+	// reliably testable regardless of what the host machine actually
+	// has installed (WhichGofmt's own fallback paths below do a real
+	// filesystem stat on fixed locations, which no PATH/GOROOT
+	// manipulation can hide if gofmt is actually there). Not a real
+	// feature -- never documented, never relied on outside selftest.
+	if os.Getenv("REPOMAN_TEST_FORCE_NO_GOFMT") != "" {
+		return ""
+	}
 	if hit, err := exec.LookPath("gofmt"); err == nil {
 		return hit
 	}

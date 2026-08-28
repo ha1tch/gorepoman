@@ -294,6 +294,27 @@ func applyPayload(payload payloadJSON) map[string]interface{} {
 			}
 			// non-atomic: drop this file from the write set, keep others
 			delete(fs.text, file)
+		} else if v.Validated == nil && atomic {
+			// atomic mode promises nothing is written unless everything
+			// stages cleanly. That promise cannot be honoured for a file
+			// whose syntax could not be independently verified at all
+			// (Validated == nil -- distinct from the "verified and it is
+			// bad" false case above, which already refuses correctly).
+			// Silently treating "could not check" the same as "checked
+			// and it is fine" would let a syntax-breaking edit through in
+			// exactly the mode whose entire point is to prevent that --
+			// and "could not check" is not a rare fluke here: it is the
+			// normal state of a toolchain-free bootstrap (this binary
+			// needs no Go toolchain to run; gofmt for validating .go
+			// files specifically still does).
+			return map[string]interface{}{
+				"ok": false,
+				"error": map[string]interface{}{
+					"cls":     "syntax-unverifiable",
+					"message": fmt.Sprintf("%s: %s -- atomic guarantee cannot be honoured without independent verification; install the needed tool, or set atomic:false to proceed without this guarantee", file, v.Detail),
+				},
+				"syntax_results": syntaxResults,
+			}
 		}
 	}
 

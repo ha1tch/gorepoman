@@ -316,6 +316,30 @@ func SelfTest() int {
 	record("14 tabs/newlines/apostrophes land byte-exact, no shell reinterpretation",
 		r["ok"] == true && strings.Contains(onDisk, tricky) && !strings.Contains(onDisk, `\n`) && !strings.Contains(onDisk, `\t`))
 
+	// 15. Atomic + unverifiable != atomic + verified-fine. When syntax
+	//     cannot be independently checked at all (gofmt genuinely
+	//     unavailable -- forced here via a test-only override, since
+	//     WhichGofmt's own fallback paths do a real filesystem stat on
+	//     fixed locations that no PATH/GOROOT manipulation can hide if
+	//     gofmt actually happens to be installed there on this host),
+	//     atomic must refuse rather than silently let a syntax-breaking
+	//     edit through. This is the regression test for a real,
+	//     confirmed incident: a fresh, toolchain-free bootstrap (no Go
+	//     installed, only the gorepoman binary itself, which needs no
+	//     toolchain to run) hit exactly this gap in the field.
+	writeFile(th, "t13.go", "package main\n\nvar m = 1\nvar n = 1\n")
+	before13 := readFile(th, "t13.go")
+	os.Setenv("REPOMAN_TEST_FORCE_NO_GOFMT", "1")
+	r = applyPayload(payloadJSON{V: v1, Atomic: boolPtr(true), Ops: []opJSON{
+		{File: "t13.go", SearchB64: strPtr(b64("m = 1")), ReplaceB64: strPtr(b64("m = 2")),
+			Expect: intPtr(1), Roles: []string{"go-code"}},
+		{File: "t13.go", SearchB64: strPtr(b64("n = 1")), ReplaceB64: strPtr(b64("n = 1\n}")),
+			Expect: intPtr(1), Roles: []string{"go-code"}}, // breaks Go syntax
+	}})
+	os.Unsetenv("REPOMAN_TEST_FORCE_NO_GOFMT")
+	record("15 atomic refuses (not silently writes) when syntax cannot be verified at all",
+		r["ok"] == false && errCls(r) == "syntax-unverifiable" && readFile(th, "t13.go") == before13)
+
 	fmt.Println("str_replace_extended selftest:")
 	allOK := true
 	for _, res := range results {
