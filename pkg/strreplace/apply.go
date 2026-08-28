@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ha1tch/repoman/pkg/ed"
-	"github.com/ha1tch/repoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/ed"
+	"github.com/ha1tch/gorepoman/pkg/roles"
 )
 
 // ── single-op staging (in-memory; no I/O beyond initial read) ───────

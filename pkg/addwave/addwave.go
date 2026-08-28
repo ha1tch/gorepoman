@@ -77,8 +77,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ha1tch/repoman/pkg/config"
-	"github.com/ha1tch/repoman/pkg/waveprogress"
+	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/waveprogress"
 )
 
 var (

@@ -62,107 +62,118 @@ import (
 	"unicode/utf8"
 )
 
-// goRole scans the line-local context; delimiter state is tracked
-// from the start of the enclosing line (Go string literals cannot
-// span lines except backticks -- for those, scan back to the opening
-// backtick).
-// inGoBacktickString reports whether offset falls inside a Go
-// backtick raw-string literal. Scans forward from the start of text,
-// tracking line comments, block comments, rune literals, and
-// double-quoted strings, so that a backtick appearing inside any of
-// those (a rune literal, a quoted backtick character, or one mentioned
-// in a // comment) is not mistaken for a genuine raw-string delimiter.
-// Its predecessor -- a naive whole-text backtick count -- got this
-// wrong on exactly that shape of input: an odd number of such "false"
-// backticks before offset flips its parity permanently, misclassifying
-// everything after them for the rest of the file. (Found on this very
-// file: roles.go's own comments, rune literals, and one dquote string
-// containing a backtick threw off the old count well before line 924,
-// misclassifying it as go-backtick-string when it is plain go-code.)
-func inGoBacktickString(text string, offset int) bool {
+// goScanState is the lexical state at a byte offset within Go source,
+// as determined by goScanTo's stateful forward scan.
+type goScanState int
+
+const (
+	goNormal goScanState = iota
+	goLineComment
+	goBlockComment
+	goDquote
+	goRuneLit
+	goBacktick
+)
+
+// goScanTo scans text from the start up to offset, tracking line
+// comments, block comments, rune literals, double-quoted strings, and
+// backtick raw strings, and returns the lexical state at offset.
+// goRole uses this for backtick strings and block comments -- the two
+// constructs that can span multiple lines -- rather than the naive
+// whole-text delimiter counts each used to rely on (an odd backtick
+// count for raw strings; "/*" count exceeding "*/" count for block
+// comments). Both naive counts got the same class of thing wrong: a
+// delimiter-like sequence appearing inside a comment, rune literal, or
+// double-quoted string earlier in the file throws off the count
+// without actually opening or closing anything, misclassifying
+// everything after it for the rest of the file. Found via two separate
+// real cases: roles.go's own "roles present" Printf line, for the
+// backtick count; a string literal containing an unmatched "/*"
+// permanently flipping the block-comment fallback for the rest of the
+// file (plain code after it misclassified as go-comment, even past a
+// real block comment properly closing later on), for the block-comment
+// count -- confirmed with a dedicated fixture, not just reasoned about.
+func goScanTo(text string, offset int) goScanState {
 	if offset > len(text) {
 		offset = len(text)
 	}
-	const (
-		normal = iota
-		lineComment
-		blockComment
-		dquote
-		runeLit
-		backtick
-	)
-	state := normal
+	state := goNormal
 	n := len(text)
 	i := 0
 	for i < offset {
 		c := text[i]
 		switch state {
-		case lineComment:
+		case goLineComment:
 			if c == '\n' {
-				state = normal
+				state = goNormal
 			}
 			i++
-		case blockComment:
+		case goBlockComment:
 			if c == '*' && i+1 < n && text[i+1] == '/' {
-				state = normal
+				state = goNormal
 				i += 2
 			} else {
 				i++
 			}
-		case backtick:
+		case goBacktick:
 			if c == '`' {
-				state = normal
+				state = goNormal
 			}
 			i++
-		case dquote:
+		case goDquote:
 			if c == '\\' && i+1 < n {
 				i += 2
 			} else {
 				if c == '"' {
-					state = normal
+					state = goNormal
 				}
 				i++
 			}
-		case runeLit:
+		case goRuneLit:
 			if c == '\\' && i+1 < n {
 				i += 2
 			} else {
 				if c == '\'' {
-					state = normal
+					state = goNormal
 				}
 				i++
 			}
 		default:
 			switch {
 			case c == '`':
-				state = backtick
+				state = goBacktick
 				i++
 			case c == '"':
-				state = dquote
+				state = goDquote
 				i++
 			case c == '\'':
-				state = runeLit
+				state = goRuneLit
 				i++
 			case c == '/' && i+1 < n && text[i+1] == '/':
-				state = lineComment
+				state = goLineComment
 				i += 2
 			case c == '/' && i+1 < n && text[i+1] == '*':
-				state = blockComment
+				state = goBlockComment
 				i += 2
 			default:
 				i++
 			}
 		}
 	}
-	return state == backtick
+	return state
 }
 
 func goRole(text string, offset int) string {
-	// Backtick strings can span lines: a real stateful scan, not a
-	// naive whole-text backtick count (see inGoBacktickString's own
-	// doc comment for why the naive version was wrong).
-	if inGoBacktickString(text, offset) {
+	// Backtick strings and block comments can both span lines: resolve
+	// them with a real stateful scan, not naive whole-text delimiter
+	// counts (see goScanTo's own doc comment for why the naive versions
+	// were wrong -- and wrong in real, exploitable ways, not just in
+	// theory).
+	switch goScanTo(text, offset) {
+	case goBacktick:
 		return "go-backtick-string"
+	case goBlockComment:
+		return "go-comment"
 	}
 	lineStart := strings.LastIndex(text[:offset], "\n") + 1
 	line := text[lineStart:offset]
@@ -184,11 +195,6 @@ func goRole(text string, offset int) string {
 	}
 	if inDQ {
 		return "go-dquote-string"
-	}
-	// Block comments: crude but honest -- count openers/closers.
-	before := text[:offset]
-	if strings.Count(before, "/*") > strings.Count(before, "*/") {
-		return "go-comment"
 	}
 	return "go-code"
 }
@@ -213,12 +219,139 @@ func stripGoStrings(line string) string {
 	return out.String()
 }
 
-var mdFenceRe = regexp.MustCompile(`(?m)^` + "```")
+// mdInFence reports whether offset falls inside a Markdown fenced
+// code block. Tracks actual CommonMark-ish fence-matching semantics --
+// a fence opens on a line of 3+ backticks (optionally indented up to 3
+// spaces, optionally followed by an info string); it closes on a LATER
+// such line whose backtick run is at least as long as the opener's and
+// has nothing else on it -- rather than a naive count of every line-
+// leading run of 3+ backticks as an equal toggle regardless of length.
+// The naive version misclassifies a SHORTER backtick run appearing as
+// literal content inside a LONGER-delimited fence (e.g. a line
+// demonstrating what a fence marker looks like, written inside a
+// 4-backtick outer fence so the example itself doesn't terminate the
+// outer fence) as closing that fence -- and everything genuinely still
+// inside it afterward as prose instead. Confirmed with a dedicated
+// nested-fence fixture, not just reasoned about: a single unpaired
+// 3-backtick line inside a 4-backtick fence flips this in both
+// directions at once (content still inside the fence reads as prose;
+// real prose after the fence actually closes reads as still-fenced).
+func mdInFence(text string, offset int) bool {
+	openLen := 0
+	pos := 0
+	n := len(text)
+	for pos < offset {
+		nl := strings.IndexByte(text[pos:], '\n')
+		var lineEnd int
+		if nl == -1 {
+			lineEnd = n
+		} else {
+			lineEnd = pos + nl
+		}
+		if lineEnd > offset {
+			break
+		}
+		line := text[pos:lineEnd]
+		stripped := strings.TrimLeft(line, " ")
+		indent := len(line) - len(stripped)
+		if indent <= 3 {
+			run := 0
+			for run < len(stripped) && stripped[run] == '`' {
+				run++
+			}
+			if run >= 3 {
+				rest := strings.TrimSpace(stripped[run:])
+				if openLen == 0 {
+					openLen = run
+				} else if run >= openLen && rest == "" {
+					openLen = 0
+				}
+			}
+		}
+		if nl == -1 {
+			break
+		}
+		pos = lineEnd + 1
+	}
+	return openLen != 0
+}
+
+type mdBacktickRun struct {
+	start, length int
+}
+
+// mdLineBacktickRuns finds every maximal run of backtick characters in
+// line, as (start, length) pairs.
+func mdLineBacktickRuns(line string) []mdBacktickRun {
+	var runs []mdBacktickRun
+	i := 0
+	n := len(line)
+	for i < n {
+		if line[i] == '`' {
+			j := i
+			for j < n && line[j] == '`' {
+				j++
+			}
+			runs = append(runs, mdBacktickRun{i, j - i})
+			i = j
+		} else {
+			i++
+		}
+	}
+	return runs
+}
+
+// mdInInlineCode reports whether offsetInLine falls inside a Markdown
+// inline code span on this line, using CommonMark's actual matching
+// rule -- a backtick run opens a span only if a LATER run of the exact
+// same length exists later on the line to close it; an unmatched run
+// is literal text, not a delimiter -- instead of a naive per-character
+// backtick parity count. The naive version treated every single
+// backtick character as an equal toggle regardless of run length or
+// whether it has a real partner, so a stray, unmatched backtick
+// anywhere earlier on the line -- with no matching closer anywhere in
+// the rest of the line -- permanently flipped "inside code" for
+// everything after it on that line, even though CommonMark renders
+// that backtick as ordinary literal text and everything after it as
+// ordinary prose. Confirmed with a dedicated fixture: a line with one
+// genuine `a`-style code span, then one unrelated stray backtick with
+// no partner, then a word that should read as plain prose -- the naive
+// count misread it as still being inside code.
+func mdInInlineCode(line string, offsetInLine int) bool {
+	runs := mdLineBacktickRuns(line)
+	i := 0
+	n := len(runs)
+	for i < n {
+		start, length := runs[i].start, runs[i].length
+		if start >= offsetInLine {
+			return false
+		}
+		j := i + 1
+		closer := -1
+		for j < n {
+			if runs[j].length == length {
+				closer = j
+				break
+			}
+			j++
+		}
+		if closer == -1 {
+			i++
+			continue
+		}
+		closeStart, closeLength := runs[closer].start, runs[closer].length
+		closeEnd := closeStart + closeLength
+		if offsetInLine < closeEnd {
+			return true
+		}
+		i = closer + 1
+	}
+	return false
+}
 
 func mdRole(text string, offset int) string {
 	before := text[:offset]
-	// Fenced block: odd number of ``` fences before us.
-	if len(mdFenceRe.FindAllString(before, -1))%2 == 1 {
+	if mdInFence(text, offset) {
 		return "md-fence"
 	}
 	lineStart := strings.LastIndex(before, "\n") + 1
@@ -229,8 +362,7 @@ func mdRole(text string, offset int) string {
 	} else {
 		line = text[lineStart : offset+lineEnd]
 	}
-	prefix := text[lineStart:offset]
-	if strings.Count(prefix, "`")%2 == 1 {
+	if mdInInlineCode(line, offset-lineStart) {
 		return "md-inline-code"
 	}
 	trimmed := strings.TrimLeft(line, " \t")
@@ -642,6 +774,23 @@ func htmlRole(text string, offset int) string {
 // string, which the delimiter-integrity check in pkg/strreplace's own
 // precheck already covers structurally -- this classifier stays a
 // role heuristic.
+//
+// Backslash-escaping is honoured for BOTH single- and triple-quoted
+// delimiters, not just single-char ones -- Python's own escaping
+// rules apply identically inside triple-quoted strings (a backslash
+// always consumes the next character as a unit, same as in a plain
+// quoted string). An earlier version only skipped the escaped
+// character when len(delim) == 1, so an escaped quote immediately
+// followed by two more literal quote characters -- still fully legal
+// inside a triple-quoted string -- was misread as a genuine closing
+// triple-quote one character too early, confirmed against CPython's
+// own ast.parse as ground truth, not just reasoned about. That
+// false-early close then cascades: content genuinely still inside
+// the string reads as code, and the real closing triple-quote -- now
+// seen while "outside" a string -- gets misread as OPENING a brand
+// new one, which stays open (misreading everything after it as still
+// being inside a string) until a further matching delimiter happens
+// to appear, if ever.
 func pythonRole(text string, offset int) string {
 	i := 0
 	inString := false
@@ -672,7 +821,7 @@ func pythonRole(text string, offset int) string {
 			i++
 			continue
 		}
-		if c == '\\' && len(delim) == 1 {
+		if c == '\\' {
 			i += 2
 			continue
 		}
@@ -729,6 +878,22 @@ func jsonRole(text string, offset int) string {
 // not delimiter tables) still catches most damage from an edit
 // landing inside one, since introducing new YAML structure
 // mid-block-scalar changes indentation/role for everything after it.
+//
+// A "#" only starts a comment at the start of the line or when
+// preceded by whitespace -- matching the same rule shellRole already
+// applies, and confirmed against PyYAML's own parser as ground
+// truth: "url: http://x.com#frag" keeps the "#frag" as part of the
+// plain scalar value (no preceding whitespace), while a trailing
+// " #comment" after it is a real comment. An earlier version treated
+// every bare "#" outside quotes as a comment regardless of what
+// preceded it, so a URL fragment or any other mid-word "#" in a
+// plain scalar wrongly turned the rest of that line into
+// yaml-comment. KNOWN LIMITATION, not chased further: PyYAML also
+// treats "#" as starting a comment immediately after a CLOSING quote
+// or flow indicator with no space (e.g. "'value'#c"), which this
+// whitespace-only heuristic does not model -- full fidelity there
+// would need flow-context tracking well beyond what this line-local
+// scan does elsewhere.
 func yamlRole(text string, offset int) string {
 	lineStart := strings.LastIndex(text[:offset], "\n") + 1
 	line := text[lineStart:offset]
@@ -768,7 +933,7 @@ func yamlRole(text string, offset int) string {
 			i++
 			continue
 		}
-		if c == '#' {
+		if c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
 			return "yaml-comment"
 		}
 		i++

@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ha1tch/repoman/pkg/doctor"
-	"github.com/ha1tch/repoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/doctor"
+	"github.com/ha1tch/gorepoman/pkg/roles"
 )
 
 // SyntaxResult is the JSON-facing shape of one file's syntax check.

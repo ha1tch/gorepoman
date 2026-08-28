@@ -82,7 +82,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ha1tch/repoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/config"
 )
 
 var statusWeight = map[string]float64{"✓": 1.0, "◐": 0.5, "☐": 0.0}

@@ -32,7 +32,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ha1tch/repoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/config"
 )
 
 var dateRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)

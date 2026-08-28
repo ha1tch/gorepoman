@@ -129,7 +129,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/ha1tch/repoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/roles"
 )
 
 const (

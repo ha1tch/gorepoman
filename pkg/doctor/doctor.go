@@ -55,7 +55,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ha1tch/repoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/config"
 )
 
 // ToolInfo describes one optional external tool's availability and

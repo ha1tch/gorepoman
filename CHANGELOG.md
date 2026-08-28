@@ -1,5 +1,178 @@
 # Changelog
 
+## [0.4.0] - 2026-08-28
+
+- **Fixed a real, would-have-broken-everything `go.mod` bug: the module**
+  **directive still declared `github.com/ha1tch/repoman` after this project**
+  **was published under its own name at `github.com/ha1tch/gorepoman`.**
+  Confirmed directly against the live repository (`git clone` + `cat
+  go.mod`), not inferred. Every one of `go install`, `go get`, and any
+  future proxy-based fetch of this module would have failed or resolved
+  incorrectly, because Go's tooling checks that a fetched module's own
+  `go.mod` declares the same path it was requested under. Fixed the
+  `module` line and all 29 internal import paths across 14 files in one
+  verified pass -- confirmed all 29 occurrences were the same syntactic
+  role (`go-dquote-string`, i.e. genuine import path string literals) via
+  `roles` before touching anything, then a single `ed sub --expect 29`
+  covering every file. `go build`/`go vet`/`gofmt`/`selftest` all
+  re-confirmed clean afterward, and every internal package import checked
+  to confirm no stale reference to the old path remains anywhere.
+- **Added `repoman version` (and `--version`/`-v`).** Prints the build
+  version, empty until now because no `version` variable existed in
+  `main.go` at all -- the original release config's own `-ldflags -X
+  main.version=...` would have been a hard Go linker error on every single
+  CI build (the linker fails, not silently ignores, an `-X` target that
+  doesn't exist), caught before it ever reached CI by actually building
+  with that exact ldflag locally first, not by inspection. Fixed by adding
+  a real `version` variable (default `"dev"` for a local, non-release
+  build) and a small dispatch check ahead of the usage-and-exit path, then
+  confirmed the full chain works: a plain build reports `repoman dev`, a
+  build with `-ldflags "-X main.version=v0.4.0"` (the exact flag the
+  release config uses) reports `repoman v0.4.0`.
+- **New: CI-built, cross-compiled release binaries -- the primary**
+  **distribution path from this release forward, not `go install` or**
+  **building from source.** This tool needs to work on projects that have
+  no reason to run a Go toolchain at all (a ZX Spectrum assembly project,
+  a static-site repo) -- requiring one just to fetch a repository-
+  discipline tool would reintroduce exactly the toolchain assumption this
+  project exists to not make. `.goreleaser.yaml` cross-compiles
+  `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64` with
+  `CGO_ENABLED=0` (safe here specifically because this codebase has zero
+  third-party dependencies and no cgo usage anywhere -- confirmed, not
+  assumed), publishes raw binaries (`archives.format: binary`, no tar/zip
+  wrapper) under the fixed name `repoman-<os>-<arch>` so the
+  `/releases/latest/download/<name>` URL never changes shape across
+  releases -- a bootstrap command written once keeps working on every
+  future release without being updated. All four cross-compiled targets
+  verified directly: each actually builds (`file` confirms correct
+  ELF/Mach-O format and architecture for each), and the native
+  `linux/amd64` binary was actually run, not just compiled, confirming
+  `version` and `doctor --quiet` both work correctly on the real
+  cross-compiled artifact. `.github/workflows/build-and-release.yml` runs
+  build/vet/gofmt/`selftest` on every push and PR; the release job runs
+  only on a pushed `v*` tag, only after that same commit's `verify` job
+  has passed in the same workflow run -- a release is never built from a
+  commit whose selftest didn't just pass.
+- **README restructured to lead with the binary bootstrap.** `go build`
+  demoted to its own "Building from source instead" subsection, correctly
+  scoped to development on `gorepoman` itself or platforms outside the
+  four the release binaries cover -- not the primary path for a consumer
+  who just wants the tool.
+- Caught and fixed during this same pass, before it reached CI: the
+  GitHub Actions workflow's bare `on:` key parses as the YAML 1.1 boolean
+  `true` under PyYAML's `safe_load` (confirmed directly -- this is not a
+  theoretical concern, `yaml.safe_load` on the actual file produced a
+  `True` key, not the string `"on"`). Sources disagree on whether GitHub's
+  own workflow parser is actually affected by this in practice, and
+  GitHub's own documentation examples use the bare form throughout, but
+  since quoting it (`"on":`) costs nothing and is the form every source
+  agrees is unambiguous, fixed rather than argued about.
+
+## [0.3.0] - 2026-08-28
+
+A full audit pass across every syntactic-role classifier, requested
+directly (not incidental) -- checking each one for the same class of
+bug already found in the backtick/block-comment work: a naive
+delimiter count or single-condition check standing in for what should
+be a real stateful scan or a language's actual matching rule. Five more
+real bugs found and fixed, all shared between the Go port and the
+Python original (not port-introduced regressions), all confirmed
+against independent ground truth (CPython's own `ast.parse`, PyYAML's
+own parser, or hand-verified CommonMark semantics) rather than just
+reasoned about, and all fixed in both languages together to keep them
+at parity rather than diverging one from the other:
+
+- **`go`'s block-comment fallback.** After the backtick fix, `goRole`
+  still fell back to a naive `strings.Count(before, "/*") >
+  strings.Count(before, "*/")` to detect multi-line block comments. A
+  string literal containing an unmatched `/*` permanently flipped "in
+  comment" for everything after it -- even past a real block comment
+  properly closing later in the file. Fixed by extending the existing
+  backtick scanner into a general `goScanTo`/`_go_scan_state` returning
+  the full lexical state at an offset, used for both backtick strings
+  and block comments (the two constructs that can actually span
+  lines), eliminating the naive count entirely rather than patching it.
+- **`md`'s fence tracking.** Counted every line-leading run of 3+
+  backticks as an equal toggle regardless of length. A shorter
+  backtick run appearing as literal content inside a longer-delimited
+  fence (e.g. a line demonstrating what a fence marker looks like,
+  written inside a 4-backtick outer fence specifically so the example
+  doesn't terminate it) incorrectly closed the outer fence -- and
+  everything genuinely still inside it afterward read as prose
+  instead. Replaced with real CommonMark-style length-matched fence
+  tracking (`_md_in_fence`/`mdInFence`): a fence opens on a line of 3+
+  backticks and closes only on a LATER line whose run is at least as
+  long, with nothing else on it.
+- **`md`'s inline-code detection.** A naive per-character backtick
+  parity count on the current line. A stray, unmatched backtick with
+  no partner anywhere else on the line permanently flipped "inside
+  code" for the rest of that line, even though CommonMark renders an
+  unmatched backtick as ordinary literal text. Replaced with proper
+  CommonMark run-length matching (`_md_in_inline_code`/
+  `mdInInlineCode`): an opening run only counts if a LATER run of the
+  exact same length closes it -- validated against a battery of hand-
+  checked cases first, including double-backtick spans containing
+  literal single backticks, before integrating.
+- **`python`'s triple-quote escape handling.** The backslash-escape
+  skip only applied when `len(delim) == 1`, so it never fired for
+  triple-quoted strings even though Python's own escaping rules apply
+  identically there. `"""` (an escaped quote immediately followed by
+  two more literal quote characters -- still fully legal inside a
+  `"""`-delimited string) read as a genuine closing triple-quote one
+  character too early. The fallout cascades: content genuinely still
+  inside the string reads as code, and the REAL closing triple-quote --
+  now seen while "outside" a string -- gets misread as OPENING a brand
+  new one, misreading everything after it as still being inside a
+  string until a further matching delimiter happens to appear, if
+  ever. Confirmed against `ast.parse` as ground truth. Fixed by
+  removing the length restriction -- the escape rule is unconditional
+  in both languages now, matching how Go's and JS's scanners already
+  handled it correctly.
+- **`yaml`'s comment detection.** Treated every bare `#` outside quotes
+  as starting a comment, regardless of what preceded it. Confirmed
+  against PyYAML's own parser: `url: http://x.com#frag` keeps `#frag`
+  as part of the plain scalar value (no preceding whitespace), so a
+  URL fragment -- or any other mid-word `#` in an unquoted scalar --
+  wrongly turned the rest of that line into `yaml-comment`. Fixed to
+  require the `#` be at line-start or preceded by whitespace, matching
+  the rule `shell`'s classifier already correctly applied. Left as a
+  named, deliberate limitation rather than chased further: PyYAML also
+  treats `#` as starting a comment immediately after a closing quote
+  or flow indicator with no space at all (`'value'#c`), which this
+  whitespace-only heuristic doesn't model -- full fidelity there would
+  need flow-context tracking well beyond what this line-local scan
+  does elsewhere.
+
+**Checked and found sound, no changes made:** `_html_embedded_spans`'s
+`</script>` ambiguity (a literal, unescaped `</script>` inside a real
+script body's own string content is indistinguishable from a genuine
+closing tag) is an already-documented limitation that matches real
+browser parsing behaviour exactly -- not a bug relative to any spec,
+since browsers face the identical ambiguity. `_js_scan` and
+`_css_role`'s escape handling is unconditional (no length-based
+restriction to get wrong the way Python's was). `_shell_role`'s single-
+quote state correctly has no escape handling at all (matching real
+shell semantics -- single-quoted content is 100% literal), its double-
+quote/backtick escape handling is unconditional, and its `#`-comment
+rule already implemented the whitespace-preceded check before this
+pass (it was the reference implementation the `yaml` fix was modelled
+on).
+
+Every fix in this entry was validated the same way: a dedicated
+fixture built from the specific failure shape, checked against
+independent ground truth where one exists, applied to both languages,
+then the full existing fixture suite re-run (10-language fixture,
+prior backtick/block-comment/fence stress tests) to confirm nothing
+regressed. `selftest` remained 75/75 in both languages throughout.
+
+One process note: the first attempt at the block-comment fix corrupted
+a Go rune literal (`'\n'`) via a Python string-escaping mistake on the
+editing side -- `'\n'` in a non-raw Python string is one newline
+character, not the two-character sequence `\n` the target Go source
+needed. Caught immediately because `go build` runs after every edit,
+not just gofmt; fixed properly, and the remaining edits in this entry
+used raw strings or a line-by-line list to avoid repeating it.
+
 ## [0.2.0] - 2026-08-28
 
 - **Fixed: `gomod --help` and `gomod check --help` — the worst of the**

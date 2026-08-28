@@ -42,7 +42,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ha1tch/repoman/pkg/doctor"
+	"github.com/ha1tch/gorepoman/pkg/doctor"
 )
 
 type runResult struct {

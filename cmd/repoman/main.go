@@ -4,25 +4,35 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ha1tch/repoman/pkg/addwave"
-	"github.com/ha1tch/repoman/pkg/doctor"
-	"github.com/ha1tch/repoman/pkg/ed"
-	"github.com/ha1tch/repoman/pkg/gomod"
-	"github.com/ha1tch/repoman/pkg/guards"
-	"github.com/ha1tch/repoman/pkg/register"
-	"github.com/ha1tch/repoman/pkg/relcore"
-	"github.com/ha1tch/repoman/pkg/roles"
-	"github.com/ha1tch/repoman/pkg/selftest"
-	"github.com/ha1tch/repoman/pkg/strreplace"
-	"github.com/ha1tch/repoman/pkg/syncver"
-	"github.com/ha1tch/repoman/pkg/waveprogress"
+	"github.com/ha1tch/gorepoman/pkg/addwave"
+	"github.com/ha1tch/gorepoman/pkg/doctor"
+	"github.com/ha1tch/gorepoman/pkg/ed"
+	"github.com/ha1tch/gorepoman/pkg/gomod"
+	"github.com/ha1tch/gorepoman/pkg/guards"
+	"github.com/ha1tch/gorepoman/pkg/register"
+	"github.com/ha1tch/gorepoman/pkg/relcore"
+	"github.com/ha1tch/gorepoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/selftest"
+	"github.com/ha1tch/gorepoman/pkg/strreplace"
+	"github.com/ha1tch/gorepoman/pkg/syncver"
+	"github.com/ha1tch/gorepoman/pkg/waveprogress"
 )
 
+// version is overridden at build time via
+// -ldflags "-X main.version=...". "dev" means a local, non-release
+// build -- never trust it as a real version identifier.
+var version = "dev"
+
 func main() {
+	if len(os.Args) >= 2 && (os.Args[1] == "version" || os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println("repoman " + version)
+		os.Exit(0)
+	}
 	if len(os.Args) < 2 {
 		fmt.Println("repoman — repository-discipline tooling (Go translation)")
 		fmt.Println("Usage: repoman <command> [args...]")
 		fmt.Println("\nCommands:")
+		fmt.Println("  version      Print the build version")
 		fmt.Println("  doctor       Environment diagnostic")
 		fmt.Println("  ed           Journaled text editing")
 		fmt.Println("  roles        Syntactic-role auditor")

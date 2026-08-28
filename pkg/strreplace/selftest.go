@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ha1tch/repoman/pkg/doctor"
+	"github.com/ha1tch/gorepoman/pkg/doctor"
 )
 
 func b64(s string) string {

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ha1tch/repoman/pkg/config"
-	"github.com/ha1tch/repoman/pkg/syncver"
+	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/syncver"
 )
 
 var (
