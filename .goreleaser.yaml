@@ -1,0 +1,62 @@
+version: 2
+
+project_name: gorepoman
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: repoman
+    main: ./cmd/repoman
+    binary: repoman
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+# format: binary publishes the raw executable directly to the release,
+# no tar.gz/zip wrapper -- an agent bootstrapping the tool does one curl
+# + chmod, not a download-then-extract step. name_template deliberately
+# carries no version: the /releases/latest/download/<name> URL then
+# never changes shape across releases, so a bootstrap command written
+# once keeps working on every future release without being updated.
+archives:
+  - format: binary
+    name_template: "repoman-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+# No git-log-derived changelog section here: this project's own
+# CHANGELOG.md is hand-written with real incident writeups (see
+# docs/repoman-020-failure-modes.md for why that matters), and a
+# GoReleaser-generated commit-log changelog would just be redundant
+# noise on the release page next to it.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: ha1tch
+    name: gorepoman
+  # CHANGELOG.md already carries the real writeup for this release;
+  # the GitHub release body just points at it rather than duplicating
+  # or truncating it.
+  header: |
+    See [CHANGELOG.md](https://github.com/ha1tch/gorepoman/blob/main/CHANGELOG.md) for what changed in this release.
+
+  footer: |
+    ## Verifying a download
+
+    ```
+    curl -LO https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64
+    curl -LO https://github.com/ha1tch/gorepoman/releases/latest/download/checksums.txt
+    sha256sum --ignore-missing -c checksums.txt
+    ```

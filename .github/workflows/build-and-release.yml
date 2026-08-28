@@ -1,0 +1,74 @@
+name: build-and-release
+
+"on":
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  # Runs on every push and PR: build, vet, gofmt, and the 75-check
+  # selftest acceptance gate. This is the same gate documented in
+  # docs/repoman-030-getting-started.md -- a red gate here means the
+  # same thing it means locally: do not trust this build, and (for a
+  # tag push) do not let it reach a release.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.21"
+
+      - name: Build
+        run: go build -o repoman ./cmd/repoman
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: gofmt check
+        run: |
+          fmt_out="$(gofmt -l .)"
+          if [ -n "$fmt_out" ]; then
+            echo "gofmt would reformat:"
+            echo "$fmt_out"
+            exit 1
+          fi
+
+      - name: selftest (75-check acceptance gate)
+        run: ./repoman selftest
+
+  # Only runs on a pushed version tag, and only after verify has
+  # passed for that same commit (needs: verify) -- a release is never
+  # built from a commit whose selftest didn't just pass in this same
+  # run.
+  release:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.21"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -68,6 +68,39 @@
   since quoting it (`"on":`) costs nothing and is the form every source
   agrees is unambiguous, fixed rather than argued about.
 
+- **Added the full `repoman-000` through `repoman-090` documentation set**
+  **under `docs/`** -- why the tool exists, failure modes it prevents,
+  getting started, precise editing, the role classifier, the register and
+  dormant guards, releases, staged-wave tracking, and the full
+  `.repoman.json` reference. Originally written and verified against the
+  Python original for real, ground-truth output; before landing here,
+  every command-line invocation and every shown output line was checked
+  against this Go binary specifically, not assumed to carry over --
+  `roles` itself was used to classify every occurrence of each Python
+  script name across the docs first, which correctly flagged that 5 of 12
+  names span multiple syntactic roles (command examples mixed with prose
+  references to the script by name) and can't be blindly substituted.
+  Real output differences found and fixed this way: `ed`'s
+  apply/mark/undo confirmation messages use double quotes in Go where
+  Python's used single (`"maxRetries"` vs `'maxRetries'`); `register
+  check`'s mismatch error uses Go's bracketed `[a b c]` formatting, not
+  Python's `('a', 'b', 'c')` tuple repr; and the `strreplace` section
+  needed a real rewrite, not a substitution -- Go has no equivalent of
+  Python's "import `apply_payload` as a library" pattern, so that whole
+  workflow (and its JSON key ordering, which differs between the two
+  languages' JSON marshaling) was redone against the actual Go CLI.
+- **Added a `Makefile`** -- `build`, `run`, `selftest`, `vet`, `fmt`/
+  `fmt-check`, `verify` (the full local gate matching what CI runs),
+  `cross` (cross-compiles all four release targets into `dist/` with a
+  `checksums.txt`, using the same matrix as `.goreleaser.yaml`), and
+  `release-dry-run`. `release-dry-run` deliberately does not
+  auto-install `goreleaser` if it's missing -- it prints instructions and
+  exits, rather than silently pulling a large dependency tree the way an
+  earlier session did by mistake. Every target was actually run, not just
+  written: `make cross` reproduced the identical four checksums from the
+  original manual cross-compile pass, confirming the build is
+  deterministic.
+
 ## [0.3.0] - 2026-08-28
 
 A full audit pass across every syntactic-role classifier, requested
