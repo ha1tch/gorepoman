@@ -146,6 +146,33 @@
   and that loader ships as part of every real OpenBSD install, not an
   extra dependency the binary would need someone to separately provide.
 
+- **Fixed a real bug shipped in the actual v0.4.0 release: both Windows**
+  **assets were uploaded as `repoman-windows-amd64.exe.exe` and**
+  **`repoman-windows-arm64.exe.exe`** -- double extension, not caught
+  before release because the actual `goreleaser` binary was never run
+  end-to-end in this sandbox (installing it pulls a large dependency
+  tree -- see the earlier incident this project's own working agreement
+  was written to prevent repeating). The `.goreleaser.yaml`
+  `archives.name_template` explicitly appended `.exe` for Windows
+  (`{{ if eq .Os "windows" }}.exe{{ end }}`); GoReleaser itself already
+  appends `.exe` automatically and unconditionally to every Windows
+  binary under `format: binary`, regardless of what `name_template`
+  produces -- the two combined. Confirmed against a matching, independent
+  report of the identical behaviour (`goreleaser/goreleaser#1221`) before
+  reapplying the fix, not just inferred from the symptom. Fix: removed
+  the explicit `.exe` from `name_template` entirely -- GoReleaser's own
+  automatic suffixing is sufficient and was always going to fire either
+  way. Caught because the person running the actual release read the
+  real GitHub Releases page and reported the exact asset names back,
+  which is what surfaced this -- worth naming plainly: this specific
+  class of bug is invisible to everything this project's own local
+  checks (`make verify`, `make cross`) can catch, since neither of them
+  invokes GoReleaser itself, only plain `go build`. A real
+  `goreleaser release --snapshot --skip=publish --clean` dry run (the
+  `make release-dry-run` target exists for exactly this) would have
+  caught it before any release, and remains the honest gap until it's
+  actually run once.
+
 ## [0.3.0] - 2026-08-28
 
 A full audit pass across every syntactic-role classifier, requested

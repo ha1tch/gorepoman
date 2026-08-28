@@ -39,22 +39,29 @@ builds:
 # carries no version: the /releases/latest/download/<name> URL then
 # never changes shape across releases, so a bootstrap command written
 # once keeps working on every future release without being updated.
-# The .exe suffix is conditional on Windows specifically -- Windows
-# won't execute a binary without it, and no other platform may have it
-# (a bare "repoman-linux-amd64.exe" would be wrong).
+#
+# Do NOT add ".exe" here for Windows -- GoReleaser already appends it
+# automatically and unconditionally to every Windows binary under
+# format: binary, regardless of what name_template produces. An earlier
+# version of this file added it explicitly anyway, producing
+# "repoman-windows-amd64.exe.exe" on a real release (confirmed on the
+# actual GitHub Releases page, not caught locally, since goreleaser
+# itself was never run end-to-end in this sandbox -- see CHANGELOG for
+# the full incident). Confirmed against a matching, independent report
+# of the same behaviour (goreleaser/goreleaser#1221) before reapplying
+# this fix, not just inferred from the symptom.
 #
 # Note on OpenBSD specifically: its two binaries come out dynamically
 # linked against /usr/libexec/ld.so regardless of CGO_ENABLED -- this is
 # long-standing, documented Go-on-OpenBSD behaviour (OpenBSD's own
 # W^X/pledge exec-protection model requires it), not a build
 # misconfiguration, and /usr/libexec/ld.so is part of every real OpenBSD
-# base install, not an extra dependency. The other six platforms produce
+# base install, not an extra dependency. The other eleven targets produce
 # genuinely static binaries; OpenBSD's two are still fully self-contained
 # in practice, just not "static" in the strict ldd sense.
 archives:
   - format: binary
-    name_template: >-
-      repoman-{{ .Os }}-{{ .Arch }}{{ if eq .Os "windows" }}.exe{{ end }}
+    name_template: "repoman-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
