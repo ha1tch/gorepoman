@@ -97,7 +97,7 @@ Run `repoman doctor` first — an environment diagnostic, not a pass/fail test:
 Go version, platform, and which of the optional external tools (`gofmt`,
 `bash`, `node`, PyYAML) this environment has, with what each enables.
 
-Then run `repoman selftest` — the acceptance gate. 75 checks; exit 0 is the
+Then run `repoman selftest` — the acceptance gate. 86 checks; exit 0 is the
 gate. Do not trust a build whose selftest fails.
 
 ## Commands
@@ -107,6 +107,7 @@ All tools are subcommands of the one binary:
 | Command | Python equivalent | Purpose |
 |---|---|---|
 | `repoman version` | — | Print the build version (Go-only; no Python equivalent) |
+| `repoman badcode` | — | Forbidden-string release gate (Go-only; local config, never committed -- see below) |
 | `repoman doctor` | `doctor.py` | Environment diagnostic |
 | `repoman ed` | `ed.py` | Journaled handle-based text editing (`find`/`apply`/`sub`/`undo`/`mark`/`log`) |
 | `repoman roles` | `roles.py` | Syntactic-role auditor |
@@ -127,6 +128,57 @@ design/pre-existing quirk, not a Go-specific gap (`roles` is a positional-
 args search tool by design; `syncver.py --help` is a bug that predates this
 translation and was reproduced faithfully rather than silently fixed here).
 
+## `badcode`: a release gate that never lives in a repo
+
+`repoman badcode check [path ...]` scans a tree for forbidden text
+strings — names, internal codenames, credential-shaped tokens,
+anything that must never reach a release. The pattern list is
+deliberately **never stored in this or any repository**: it's local,
+per-machine config, because a blocklist committed alongside the code
+it's supposed to protect can be edited by whoever has commit access —
+including an agent — in the same change that would have been caught by
+it. Keeping it out-of-band is the entire point.
+
+Config location: `$REPOMAN_BADCODE_DIR` if set, otherwise the OS user
+config directory (`~/.config/repoman` on Linux, `~/Library/Application
+Support/repoman` on macOS, `%AppData%\repoman` on Windows). Two files,
+both optional, both read if present:
+
+```
+# badcode.txt -- one pattern per line, # comments allowed
+TOP_SECRET_INTERNAL_CODENAME
+sk_live_example_forbidden_key
+```
+
+```json
+// badcode.json -- adds an optional reason, included in the refusal message
+[
+  {"pattern": "REDACTED_CUSTOMER_NAME", "reason": "real customer name, NDA'd"}
+]
+```
+
+Matching is a literal, case-insensitive substring search — not regex,
+deliberately: this check's entire value is that it can't fail in a way
+that looks like success, and regex adds failure modes (a pattern that
+silently doesn't compile, an anchor off by one) that a plain substring
+search doesn't have. No config at all is not an error — this is
+optional, per-operator tooling — but it's never silently indistinguishable
+from a real pass either; a `WARN` line says plainly that nothing was
+actually checked.
+
+**`repoman relcore` runs this check automatically, unconditionally,
+as the literal first thing it does** — before reading whether
+`release.steps` even exists, before any step in it runs, on every
+invocation including `--resume`. This is deliberately *not* a
+`release.steps` entry: anything expressible in `.repoman.json` can be
+edited or removed by anyone with repo access, which would defeat the
+entire point of a gate that's supposed to be unconditional. There is no
+flag, environment variable, or config key anywhere in this codebase
+that disables it. The only lever that exists is the local badcode
+config itself — patterns are configurable; whether the check runs at
+all is not. A real match halts the release with no override; the only
+way forward is removing the matched content and re-running.
+
 ## Status
 
 This translation mirrors the Python original at v0.8.0 feature-for-feature on
@@ -136,7 +188,10 @@ via the shared 75-check `selftest` suite plus direct side-by-side behavioural
 testing on live fixtures against the real compiled Python originals, and
 `roles` in particular against a battery of dedicated stress fixtures covering
 every classifier (Go, Markdown, Python, YAML, HTML) rather than just the
-language-vocabulary sampler most other testing here uses.
+language-vocabulary sampler most other testing here uses. `badcode` (Go-only,
+no Python original to compare against) is covered by its own 7 checks plus
+4 covering its mandatory `relcore` integration, in the same suite, 86 in
+total.
 
 Eight real, shared bugs have been found this way and fixed in **both**
 languages together (fixing only the Go side would have broken parity rather

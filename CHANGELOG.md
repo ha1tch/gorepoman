@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.6.0] - 2026-08-28
+
+- **`relcore` now runs `badcode` automatically, unconditionally, as the**
+  **literal first thing it does on every invocation** -- before checking
+  whether `release.steps` even exists, before any step runs, including on
+  `--resume`. This corrects a real design gap in 0.5.0: `badcode` shipped
+  as a standalone command the operator had to remember to wire into their
+  own release manifest as an ordinary `run` step, which meant a release
+  could still happen without it ever running -- optional-if-remembered,
+  not the hard gate it was meant to be. The fix is deliberately NOT a
+  `release.steps` entry: anything expressible in `.repoman.json` can be
+  edited or removed by anyone with repo access, which would defeat the
+  entire point of a check that's supposed to be unconditional. The
+  pre-flight is not part of the resumable-steps journal at all, so there
+  is nothing for `--resume` to skip -- confirmed directly: a real match
+  blocks identically on a fresh run and a `--resume` run of the exact
+  same release. There is no flag, environment variable, or config key
+  anywhere in this codebase that disables it; the only lever that exists
+  is the local badcode config itself, which was already the intended
+  design -- patterns are configurable, whether the check runs is not.
+  No config at all remains a soft pass (unchanged from 0.5.0's own
+  design), with the `WARN` visible in the release's own output rather
+  than suppressed.
+- Added 4 new selftest checks covering this integration specifically,
+  using a synthetic project separate from the shared fixture the rest of
+  the suite depends on (real match blocks before any step runs; `--resume`
+  does not bypass it; removing the matched content lets the release
+  proceed; no-config soft pass still lets a release through) -- 86 checks
+  total, up from 82.
+
+## [0.5.0] - 2026-08-28
+
+- **Added `repoman badcode check [path ...]`** -- a release-blocking scan
+  for forbidden text strings, loaded from a local config that is
+  deliberately never stored in this or any repository (a blocklist
+  committed alongside the code it protects can be edited by whoever has
+  commit access, including an agent, in the same change it was meant to
+  catch -- keeping it out-of-band is the entire point). Config:
+  `$REPOMAN_BADCODE_DIR` or the OS user-config directory, two optional
+  files (`badcode.txt`, one pattern per line; `badcode.json`, adds an
+  optional per-pattern `reason` included in the refusal message).
+  Literal case-insensitive substring matching, not regex -- deliberately,
+  since this check's entire value is that it can't fail in a way that
+  looks like success, and regex adds failure modes a plain substring
+  search doesn't have. Binary files are skipped (a coincidental byte
+  match inside a compiled artifact is noise, not a real leak). No config
+  at all is a soft pass, not a hard failure, but says so plainly via a
+  `WARN` line rather than looking identical to a real, clean check --
+  matching this project's own dormant-guards principle that a check
+  which never actually ran proves nothing.
+- Directory-walking and `.git` exclusion reused directly from `roles.Expand`
+  rather than reimplemented.
+- Caught and fixed during the same pass, before it shipped: `repoman
+  badcode --help` (bare, no subcommand) initially fell through to the
+  generic usage-error path instead of showing help -- the exact same
+  class of top-level-`--help`-gated-behind-a-subcommand-match bug found
+  and fixed in `guards`/`relcore`/`register`/`gomod` earlier in this
+  project's history. Found by actually running the bare `--help` form,
+  not just the documented `badcode check --help` form.
+- Added 7 new selftest checks covering `badcode` (clean pass with both
+  config files loaded, a real case-insensitive match with the JSON
+  `reason` field surfaced, correct file/line reporting, binary-file skip,
+  no-config soft pass, and the `--help` regression) -- 82 checks total,
+  up from 75. No Python equivalent exists for this command, so unlike
+  every other section in this suite it has nothing to differentially
+  test against; the fixture-based checks are the only verification.
+
 ## [0.4.0] - 2026-08-28
 
 - **Fixed a real, would-have-broken-everything `go.mod` bug: the module**

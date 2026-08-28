@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/ha1tch/gorepoman/pkg/addwave"
+	"github.com/ha1tch/gorepoman/pkg/badcode"
 	"github.com/ha1tch/gorepoman/pkg/doctor"
 	"github.com/ha1tch/gorepoman/pkg/ed"
 	"github.com/ha1tch/gorepoman/pkg/gomod"
@@ -33,6 +34,7 @@ func main() {
 		fmt.Println("Usage: repoman <command> [args...]")
 		fmt.Println("\nCommands:")
 		fmt.Println("  version      Print the build version")
+		fmt.Println("  badcode      Scan for forbidden strings (local config, never in a repo)")
 		fmt.Println("  doctor       Environment diagnostic")
 		fmt.Println("  ed           Journaled text editing")
 		fmt.Println("  roles        Syntactic-role auditor")
@@ -54,6 +56,8 @@ func main() {
 	var exitCode int
 
 	switch cmd {
+	case "badcode":
+		exitCode = badcode.Run(args)
 	case "doctor":
 		exitCode = doctor.Run(args)
 	case "ed":

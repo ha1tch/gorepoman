@@ -362,8 +362,7 @@ func runSection11(g *gate, root, cfgPath string) int {
 		fmt.Println("skip  gosum-incomplete detection (no outbound network in this environment -- not this tool's own defect)")
 	}
 
-	fmt.Printf("selftest: all %d checks green\n", g.checks)
-	return 0
+	return runSection12(g, root)
 }
 
 // ── small local helpers ──────────────────────────────────────────────

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ha1tch/gorepoman/pkg/badcode"
 	"github.com/ha1tch/gorepoman/pkg/config"
 	"github.com/ha1tch/gorepoman/pkg/syncver"
 )
@@ -274,6 +275,56 @@ func min(a, b int) int {
 	return b
 }
 
+// runBadcodePreflight is the mandatory, unconditional gate described
+// at its call site in Run: not a release.steps entry, not resumable,
+// not skippable, not journaled through the skip-if-green path any
+// other step can use. It scans the entire repository root (the
+// broadest reasonable scope for "must never reach a release,
+// full stop" -- not just whatever release.archive.sources happens to
+// list, since content that never went into the archive could still
+// have been committed and pushed). No patterns configured is a soft
+// pass (LoadPatterns/Check already implement that -- see pkg/badcode),
+// which this function does not override; a real match is a hard,
+// unrecoverable failure with no bypass of any kind.
+func runBadcodePreflight(root, version string) int {
+	say("-- badcode (mandatory pre-flight, not skippable)")
+
+	patterns, dir, err := badcode.LoadPatterns()
+	if err != nil {
+		say(fmt.Sprintf("   FAIL badcode: %v", err))
+		return 1
+	}
+
+	journal := loadJournal(root, version)
+
+	if len(patterns) == 0 {
+		say(fmt.Sprintf("   WARN no badcode patterns configured in %s -- nothing checked", dir))
+		journal.record("__badcode_preflight__", "ok", map[string]interface{}{"patterns": 0})
+		say("   ok badcode (0 patterns configured)")
+		return 0
+	}
+
+	matches := badcode.Check([]string{root}, patterns)
+	if len(matches) > 0 {
+		for _, m := range matches {
+			reason := ""
+			if m.Pattern.Reason != "" {
+				reason = fmt.Sprintf(" (%s)", m.Pattern.Reason)
+			}
+			say(fmt.Sprintf("   ERROR badcode-match: pattern %q%s found in %s:%d: %s",
+				m.Pattern.Text, reason, m.File, m.Line, m.Snippet))
+		}
+		journal.record("__badcode_preflight__", "fail", map[string]interface{}{"matches": len(matches)})
+		say(fmt.Sprintf("   FAIL badcode: %d match(es) -- this gate has no override; remove the "+
+			"matched content and re-run", len(matches)))
+		return 1
+	}
+
+	journal.record("__badcode_preflight__", "ok", map[string]interface{}{"patterns": len(patterns)})
+	say(fmt.Sprintf("   ok badcode (%d pattern(s) checked)", len(patterns)))
+	return 0
+}
+
 func Run(args []string) int {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: repoman relcore <version> [--resume]")
@@ -305,6 +356,21 @@ func Run(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
+	}
+
+	// badcode: mandatory pre-flight, first thing that runs, before
+	// anything else -- deliberately NOT a release.steps entry in
+	// .repoman.json. If it were expressible in that manifest, it
+	// could be removed from that manifest by anyone with repo access,
+	// which defeats the entire point. It is not resumable, not
+	// journaled through the skip-if-green path any other step can use
+	// (journal.green is never consulted for it), and has no flag, env
+	// var, or config key anywhere in this codebase that disables it.
+	// The only lever that exists is the local badcode config itself --
+	// see pkg/badcode's own doc comment for why that is local and
+	// never repo-committed.
+	if rc := runBadcodePreflight(root, version); rc != 0 {
+		return rc
 	}
 
 	if len(cfg.Release.Steps) == 0 {
