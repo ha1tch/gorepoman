@@ -16,6 +16,7 @@ twice.
 | 010 | [Why repoman exists](repoman-010-why.md) | The problem it solves, prevention vs. recovery, and the core design principles — each tied to a real incident |
 | 020 | [Failure modes](repoman-020-failure-modes.md) | A scannable catalog: what each failure looks like, the mechanism that prevents it, the incident it traces to |
 | 030 | [Getting started](repoman-030-getting-started.md) | Install, `doctor`, `selftest` as the acceptance gate, and opting in via `.repoman.json` |
+| 035 | [Migrating from vendored Python](repoman-035-migration.md) | A verified shim template and generator script for replacing vendored Python `repoman` scripts with thin `gorepoman` shims |
 | 040 | [Precise editing](repoman-040-editing.md) | `ed` and `strreplace` — handle-verified, journaled editing, with real worked examples |
 | 050 | [The role classifier](repoman-050-roles.md) | `roles` — the full vocabulary, per-language classifier notes, and their documented limits |
 | 060 | [Register and guards](repoman-060-register-and-guards.md) | Tracking open work through to closure, and keeping dormant tests honest about when they last ran |

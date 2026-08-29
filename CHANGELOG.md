@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.13.3] - 2026-08-28
+
+- **New documentation chapter: `docs/repoman-035-migration.md`.**
+  Migrating a vendored Python `repoman` install to `gorepoman` shims is
+  entirely mechanical -- twelve near-identical files, only the
+  subcommand name differing -- and a real migration converged on
+  exactly this pattern, but arrived there by trial and error rather
+  than a known-good reference. Publishes a verified shim template and
+  a generator script that writes all twelve from a table in one run,
+  rather than requiring each to be hand-authored. Both were tested
+  directly before publishing, not just reviewed: the template against
+  both binary-resolution paths (`$REPOMAN_BIN` and `$PATH`) and a real
+  subcommand invocation with real, multi-line, quoted arguments; the
+  generator against a full run producing all twelve files, each
+  confirmed to compile cleanly, with a generated shim then run for
+  real. The complete file-to-subcommand mapping is included, along
+  with why `config.py` (a shared helper, never a direct CLI entry
+  point) has no shim of its own and `badcode` has no vendored
+  Python equivalent to migrate from at all.
+- Purely documentation -- no change to the binary's own behavior.
+
+## [0.13.2] - 2026-08-28
+
+- **Fixed `doctor` conflating two different facts into one line: this**
+  **binary's own compile-time Go version, and whether a live toolchain**
+  **is actually on PATH right now.** Confirmed as a real, recurring
+  field incident, not a hypothetical one -- the same misreading
+  surfaced independently across multiple sessions this project's own
+  history: a session seeing "Go 1.21.13" concluding something about
+  its own environment's toolchain, when that number is this binary's
+  own frozen build-time version and has no relationship to what's
+  actually installed wherever it happens to be running.
+- **Root cause, confirmed by reading the code, not inferred from**
+  **symptoms:** `installedGoVersion`'s own structure implied "try a
+  live `go version` on PATH, fall back to this binary's own
+  compile-time version if that fails" -- but `runtime.Version()` is
+  never empty for any compiled Go binary, so the live-PATH fallback
+  branch beneath it could structurally never execute. `doctor` was
+  incapable of ever reporting a live, actually-installed toolchain,
+  regardless of what was really on PATH. A second, related dead branch
+  (`report.GoVersion == ""`, "go toolchain not found on PATH") was
+  removed too -- unreachable for the identical reason.
+- **Fix**: `doctor` now reports two clearly separate, correctly-labeled
+  facts -- `[OK] This binary's own Go X.Y.Z (...)`, always present,
+  compiled in; and, on its own line, either `[OK] A live go toolchain
+  is also on PATH: goX.Y.Z` or `[--] No live go toolchain on PATH`,
+  a genuine, live PATH probe. Verified explicitly in both directions:
+  with a real toolchain present, both lines correctly reflect it; with
+  none at all, the binary's own version still reports (it needs no
+  toolchain to run) while the live line correctly says so.
+- Found while investigating an unrelated report and fixed immediately
+  rather than filed for later, given this was already a third
+  independent occurrence of the same confusion.
+- Selftest count: 135 -> 137 (2 new checks, one per direction of the
+  live-toolchain question).
+
 ## [0.13.1] - 2026-08-28
 
 - **Fixed a real gap in 0.13.0's own claim: the acceptance gate could**

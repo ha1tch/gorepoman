@@ -463,7 +463,7 @@ type doctorReport struct {
 func doctorCheckViaCLI(self, cwd string) doctorReport {
 	r := run(self, cwd, "doctor")
 	rep := doctorReport{}
-	rep.goOK = strings.Contains(r.stdout, "[OK] Go")
+	rep.goOK = strings.Contains(r.stdout, "[OK] This binary's own Go")
 	if m := regexp.MustCompile(`Platform: (.+)`).FindStringSubmatch(r.stdout); m != nil {
 		rep.platform = strings.TrimSpace(m[1])
 	}

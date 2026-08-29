@@ -1,7 +1,6 @@
 package selftest
 
 import (
-	"fmt"
 	"os/exec"
 	"strings"
 )
@@ -62,23 +61,5 @@ func runSection23(g *gate, root string) int {
 		return 1
 	}
 
-	if len(g.deferred) > 0 {
-		fmt.Printf("selftest: all %d checks green (%d deferred -- optional toolchain missing)\n",
-			g.checks, len(g.deferred))
-		fmt.Println()
-		fmt.Println("Deferred checks are not failures -- each needs a tool this bootstrap")
-		fmt.Println("deliberately does not require. Install it, then re-run `repoman selftest`")
-		fmt.Println("for full coverage:")
-		seen := map[string]bool{}
-		for _, reason := range g.deferred {
-			if seen[reason] {
-				continue
-			}
-			seen[reason] = true
-			fmt.Println("  - " + reason)
-		}
-	} else {
-		fmt.Printf("selftest: all %d checks green\n", g.checks)
-	}
-	return 0
+	return runSection24(g, root)
 }

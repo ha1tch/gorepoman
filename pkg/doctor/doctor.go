@@ -77,6 +77,19 @@ type Report struct {
 	GoVersion string
 	GoFloor   string // "" if go.mod's own floor could not be determined
 
+	// LiveGoVersion is a real go binary found on PATH right now, if
+	// any -- deliberately separate from GoVersion (this binary's own
+	// compile-time version, via runtime.Version()). Confusing the two
+	// is not hypothetical: confirmed independently, more than once,
+	// as a real misreading -- a session concluding this environment's
+	// own toolchain didn't match expectations, when what GoVersion
+	// actually reports has no relationship to what's installed here at
+	// all. LiveGoVersion is "" when no go binary is reachable on PATH,
+	// which is itself informative (this binary needs no toolchain to
+	// run; a project being worked on inside this environment usually
+	// does).
+	LiveGoVersion string
+
 	Platform          string
 	PlatformSupported bool
 
@@ -185,12 +198,25 @@ func versionAtLeast(have, floor string) bool {
 
 var goVersionOutRe = regexp.MustCompile(`go(\d+\.\d+(?:\.\d+)?)`)
 
+// installedGoVersion returns this binary's own compile-time Go
+// version (via runtime.Version()) -- always non-empty for any
+// compiled Go binary, which is exactly why this never falls through
+// to a live PATH lookup: that branch existed here once and could
+// never actually execute. Kept separate from liveGoVersion below
+// specifically so the two questions ("what built this binary" vs.
+// "what's on PATH right now") stay two questions, not one that
+// silently only ever answers the first.
 func installedGoVersion() string {
-	if runtime.Version() != "" {
-		if m := goVersionOutRe.FindStringSubmatch(runtime.Version()); m != nil {
-			return m[1]
-		}
+	if m := goVersionOutRe.FindStringSubmatch(runtime.Version()); m != nil {
+		return m[1]
 	}
+	return ""
+}
+
+// liveGoVersion reports a real `go` binary found on PATH right now,
+// or "" if none is reachable -- a live probe, not this binary's own
+// compile-time version.
+func liveGoVersion() string {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
 		return ""
@@ -304,6 +330,7 @@ func Check() Report {
 	var report Report
 
 	report.GoVersion = installedGoVersion()
+	report.LiveGoVersion = liveGoVersion()
 	report.GoFloor = goFloorFromModule()
 	if report.GoFloor == "" || report.GoVersion == "" {
 		// Can't determine one side of the comparison -- don't fail a
@@ -381,8 +408,6 @@ func printReport(report Report, quiet bool) {
 	}
 	floorNote := ""
 	switch {
-	case report.GoVersion == "":
-		floorNote = "go toolchain not found on PATH"
 	case report.GoFloor == "":
 		floorNote = "go.mod floor not determined -- not treated as a failure"
 	case report.GoOK:
@@ -390,7 +415,18 @@ func printReport(report Report, quiet bool) {
 	default:
 		floorNote = fmt.Sprintf("BELOW %s -- this project's go.mod requires it", report.GoFloor)
 	}
-	fmt.Printf("[%s] Go %s (%s)\n", goMark, orUnknown(report.GoVersion), floorNote)
+	fmt.Printf("[%s] This binary's own Go %s (%s)\n", goMark, report.GoVersion, floorNote)
+	// Deliberately separate from the line above: that one is this
+	// binary's own compile-time version, and has no relationship to
+	// what's actually installed in this environment -- confirmed,
+	// independently, more than once, as a real point of confusion
+	// when the two were reported as if they were the same fact.
+	if report.LiveGoVersion != "" {
+		fmt.Printf("[OK] A live go toolchain is also on PATH: go%s\n", report.LiveGoVersion)
+	} else {
+		fmt.Println("[--] No live go toolchain on PATH -- this binary needs none to run; " +
+			"a project being worked on in this environment may")
+	}
 
 	platMark := "OK"
 	if !report.PlatformSupported {
@@ -454,13 +490,6 @@ func printReport(report Report, quiet bool) {
 		}
 		fmt.Println()
 	}
-}
-
-func orUnknown(s string) string {
-	if s == "" {
-		return "(not found)"
-	}
-	return s
 }
 
 // Run implements `repoman doctor [--quiet]`.
