@@ -10,6 +10,7 @@ import (
 
 	"github.com/ha1tch/gorepoman/pkg/ed"
 	"github.com/ha1tch/gorepoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // ── single-op staging (in-memory; no I/O beyond initial read) ───────
@@ -616,6 +617,7 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-040-editing.html")
 		fmt.Println("for worked examples of the full find -> apply/sub workflow.")
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-040-editing")
 		return 0
 	case "apply":
 		for _, a := range argv[1:] {

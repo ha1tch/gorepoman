@@ -79,6 +79,7 @@ import (
 
 	"github.com/ha1tch/gorepoman/pkg/config"
 	"github.com/ha1tch/gorepoman/pkg/waveprogress"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 var (
@@ -419,8 +420,10 @@ func Run(argv []string) int {
 			fmt.Println("                        collision.")
 			fmt.Println("  --dry-run")
 			fmt.Println("")
-			fmt.Println("See docs/repoman-080-waves.md for the full worked example, and")
-			fmt.Println("`repoman waveprogress -h` for rendering and hiding waves afterward.")
+			fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-080-waves.html")
+			fmt.Println("for the full worked example, and `repoman waveprogress -h` for")
+			fmt.Println("rendering and hiding waves afterward.")
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-080-waves")
 			return 0
 		}
 	}

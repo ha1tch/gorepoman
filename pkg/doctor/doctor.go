@@ -56,6 +56,7 @@ import (
 	"time"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // ToolInfo describes one optional external tool's availability and
@@ -491,6 +492,7 @@ func Run(argv []string) int {
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(doctorHelp)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-030-getting-started")
 			return 0
 		}
 	}

@@ -43,6 +43,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/doctor"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 type runResult struct {
@@ -50,9 +51,21 @@ type runResult struct {
 	code           int
 }
 
+// noWebHelpEnv appends REPOMAN_NO_WEB_HELP=1 to a base environment,
+// guaranteeing every subprocess this gate spawns never attempts the
+// live-fetch addition to -h output (pkg/webhelp) -- selftest, the
+// acceptance gate, must stay fully offline and deterministic
+// regardless of network conditions during a test run. This is the
+// one place that guarantee is enforced; every helper below routes
+// through it rather than each remembering to set it independently.
+func noWebHelpEnv(base []string) []string {
+	return append(append([]string{}, base...), "REPOMAN_NO_WEB_HELP=1")
+}
+
 func run(self, cwd string, args ...string) runResult {
 	cmd := exec.Command(self, args...)
 	cmd.Dir = cwd
+	cmd.Env = noWebHelpEnv(os.Environ())
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -74,6 +87,7 @@ func run(self, cwd string, args ...string) runResult {
 func runWithStdin(self, cwd, stdin string, args ...string) runResult {
 	cmd := exec.Command(self, args...)
 	cmd.Dir = cwd
+	cmd.Env = noWebHelpEnv(os.Environ())
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -199,6 +213,7 @@ func Run(argv []string) int {
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(selftestHelp)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-030-getting-started")
 			return 0
 		}
 	}

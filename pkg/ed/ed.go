@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ha1tch/gorepoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 const (
@@ -226,6 +227,7 @@ func Run(args []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-040-editing.html")
 		fmt.Println("for worked examples of the full find -> apply/sub workflow.")
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-040-editing")
 		return 0
 
 	case "find":

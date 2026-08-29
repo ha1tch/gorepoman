@@ -132,6 +132,12 @@ def build_doc_pages(version):
         page = render_page(f, html, navextra='&middot; <a href="../index.html">index</a>', version=version)
         with open(out_path, "w", encoding="utf-8") as fh:
             fh.write(page)
+        # Raw markdown alongside the rendered HTML, byte-identical to
+        # the source -- gorepoman's own -h output fetches this
+        # directly (pkg/webhelp) since it needs plain text, not a
+        # browser-oriented page wrapped in nav/CSS chrome.
+        raw_out_path = os.path.join(SITE, "docs", f)
+        shutil.copy2(src, raw_out_path)
 
 
 def copy_binaries():

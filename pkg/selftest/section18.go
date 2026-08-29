@@ -35,7 +35,7 @@ func runSection18(g *gate, root string) int {
 	// merely a successful exit code.
 	r := run(self, root, "waveprogress", "-h")
 	if !g.check(strings.Contains(r.stdout, "register_item") &&
-		strings.Contains(r.stdout, "repoman-080-waves.md"),
+		strings.Contains(r.stdout, "repoman-080-waves"),
 		"regression: waveprogress's help explains the register_item relationship and "+
 			"points at the full worked example, not just the flag list", r.stdout) {
 		return 1
@@ -46,7 +46,7 @@ func runSection18(g *gate, root string) int {
 	// the actual gap a fresh session hit, not just a missing feature.
 	r = run(self, root, "addwave", "-h")
 	if !g.check(strings.Contains(r.stdout, "no separate command for putting an EXISTING register") &&
-		strings.Contains(r.stdout, "repoman-080-waves.md"),
+		strings.Contains(r.stdout, "repoman-080-waves"),
 		"regression: addwave's help explicitly states there is no separate \"move a ticket "+
 			"into a wave\" command, and points at the full worked example", r.stdout) {
 		return 1

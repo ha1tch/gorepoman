@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 var versionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$`)
@@ -140,6 +141,7 @@ func Run(args []string) int {
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
 			fmt.Print(syncverHelp)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
 			return 0
 		}
 	}

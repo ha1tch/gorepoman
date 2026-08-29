@@ -17,6 +17,7 @@ import (
 	"github.com/ha1tch/gorepoman/pkg/badcode"
 	"github.com/ha1tch/gorepoman/pkg/config"
 	"github.com/ha1tch/gorepoman/pkg/syncver"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 var (
@@ -347,6 +348,7 @@ func Run(args []string) int {
 		fmt.Println("https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
 		fmt.Println("for the full release workflow, and repoman-065-badcode.html for")
 		fmt.Println("that gate specifically.")
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
 		return 0
 	}
 

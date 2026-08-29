@@ -34,6 +34,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // runResult is (returncode, combined stdout+stderr). rc == nil means the
@@ -220,6 +222,7 @@ func Run(args []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
 		fmt.Println("for how this fits into a full release alongside syncver and relcore.")
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
 		return 0
 	}
 	if len(args) == 0 || args[0] != "check" {
@@ -238,6 +241,9 @@ func Run(args []string) int {
 			fmt.Println("  --strict-relative-replace")
 			fmt.Println("                        also fail on relative-path (./..., ../...) replace")
 			fmt.Println("                        directives, not just absolute ones")
+			fmt.Println()
+			fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
 			return 0
 		}
 	}

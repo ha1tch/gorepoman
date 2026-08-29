@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 var dateRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
@@ -316,6 +317,7 @@ func Run(args []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-060-register-and-guards.html")
 		fmt.Println("for keeping dormant tests honest about when they last ran.")
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-060-register-and-guards")
 		return 0
 	}
 	if len(args) >= 2 && (args[1] == "-h" || args[1] == "--help") {

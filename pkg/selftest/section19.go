@@ -73,6 +73,5 @@ func runSection19(g *gate, root string) int {
 		}
 	}
 
-	fmt.Printf("selftest: all %d checks green\n", g.checks)
-	return 0
+	return runSection20(g, root)
 }

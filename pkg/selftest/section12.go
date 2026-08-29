@@ -113,10 +113,13 @@ func runSection12(g *gate, root string) int {
 // current process's inherited one -- needed here specifically because
 // REPOMAN_BADCODE_DIR must vary between sub-checks within this same
 // section, which plain run()'s always-inherit-os.Environ() can't do.
+// Routes through noWebHelpEnv the same as every other helper in this
+// package, so REPOMAN_NO_WEB_HELP is never something a caller here
+// could forget to set.
 func runWithEnv(self, cwd string, env []string, args ...string) runResult {
 	cmd := exec.Command(self, args...)
 	cmd.Dir = cwd
-	cmd.Env = env
+	cmd.Env = noWebHelpEnv(env)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

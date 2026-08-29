@@ -60,6 +60,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // goScanState is the lexical state at a byte offset within Go source,
@@ -1181,6 +1183,7 @@ func Run(argv []string) int {
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(rolesHelp)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-050-roles")
 			return 0
 		}
 	}

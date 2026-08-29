@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.11.0] - 2026-08-28
+
+- **New: `-h`/`--help` on every command optionally fetches its**
+  **matching doc chapter live, as an addition -- never a replacement --**
+  **to the embedded help text every command already prints. New
+  package, `pkg/webhelp`.** Motivated by a report that a session
+  couldn't retrieve a specific docs page even though it's genuinely
+  reachable. Tested the suspected cause (GitHub Pages filtering by
+  User-Agent) directly before building anything: no evidence for it --
+  every UA variation tried, including none at all, returned a clean
+  200 in well under half a second. This feature is a direct,
+  self-contained HTTP request from this compiled binary -- it does
+  not depend on, or route through, any other tool's own URL-fetching
+  policy, whatever the actual cause of the original report turns out
+  to be.
+- Fetches raw markdown, not the rendered HTML page (no HTML-stripping
+  needed -- plain text is already exactly what a terminal wants).
+  `tools/build_site.py` now copies the raw `.md` alongside the
+  rendered `.html` for every chapter, so the Pages mirror serves both.
+- **Every property here follows from one constraint: `-h`/`--help` has
+  been fully offline and deterministic since this project began, and
+  that could not be allowed to change.** A short (3s) timeout; a
+  realistic browser user agent (not confirmed necessary against this
+  specific host, set anyway since it costs nothing); genuinely silent
+  failure on any error, non-200 status, or empty body -- nothing
+  printed, no hang, the embedded text completely unaffected either
+  way. `REPOMAN_NO_WEB_HELP` suppresses the attempt entirely, and
+  `selftest`'s own internal subprocess helpers (`run`, `runWithStdin`,
+  `runWithEnv`) now route through a single `noWebHelpEnv()` wrapper
+  that sets it unconditionally on every subprocess the acceptance gate
+  spawns -- impossible for a future check to forget, confirmed
+  directly by timing (a real attempt: ~360ms; suppressed: ~3ms).
+- `REPOMAN_WEBHELP_BASE_URL` overrides the fetch target, primarily so
+  this project's own regression tests can verify the genuine success
+  path -- embedded text, then a clear delineation, then the fetched
+  content, in that order -- against a local, in-process test server,
+  rather than either skipping that coverage entirely or making
+  `selftest` depend on real network reachability to get it.
+- Wired into all 13 commands: `roles`, `syncver`, `doctor`, `selftest`,
+  `ed`, `strreplace`, `register`, `guards`, `relcore`, `gomod` (both
+  help levels), `badcode check`, `addwave`, `waveprogress`. Along the
+  way, replaced two remaining bare relative-path doc references
+  (`addwave`, `waveprogress`) with the full mirror URL, matching every
+  other command.
+- The URL-consistency pass above (bare relative paths -> full mirror
+  URLs) would have silently broken two existing selftest assertions
+  that checked for a bare `.md` path string -- found and fixed to an
+  extension-agnostic match before it became a real failure.
+- Selftest count: 121 -> 124 (3 new checks: suppression genuinely
+  works, silent failure on an unreachable host, and the full success
+  path against a local test server).
+
 ## [0.10.0] - 2026-08-28
 
 - **Fixed four more subcommands with zero help handling, found by**

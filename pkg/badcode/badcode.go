@@ -50,6 +50,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/roles"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // Pattern is one forbidden string.
@@ -276,6 +277,7 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-065-badcode.html")
 		fmt.Println("for the full design rationale and how this integrates with relcore.")
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-065-badcode")
 		return 0
 	}
 

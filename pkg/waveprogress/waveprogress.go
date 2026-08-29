@@ -83,6 +83,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 var statusWeight = map[string]float64{"✓": 1.0, "◐": 0.5, "☐": 0.0}
@@ -662,8 +663,9 @@ wave's own ` + "`register_item`" + ` field, set when the item was added with
 ` + "`addwave`" + `'s --items-json; waves don't replace the register, and
 there is no separate "move a ticket into a wave" command -- an
 existing ticket is associated with a wave at the point the wave's
-items are defined. See docs/repoman-080-waves.md for the full
-worked example, including exactly what that JSON looks like.
+items are defined. See
+https://ha1tch.github.io/gorepoman/docs/repoman-080-waves.html for the
+full worked example, including exactly what that JSON looks like.
 
 Without flags, this regenerates the tracking document's summary
 section in place and exits -- the normal, everyday invocation:
@@ -697,6 +699,7 @@ func Run(argv []string) int {
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(waveprogressHelp)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-080-waves")
 			return 0
 		}
 	}
