@@ -696,10 +696,12 @@ with an unrelated-looking error.
 
 // Run implements `repoman waveprogress [flags]`.
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(waveprogressHelp)
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-080-waves")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-080-waves", argv)
 			return 0
 		}
 	}

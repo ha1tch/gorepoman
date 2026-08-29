@@ -244,6 +244,7 @@ func Check(paths []string, patterns []Pattern) []Match {
 
 // Run implements `repoman badcode check [path ...]`.
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	if len(argv) > 0 && (argv[0] == "-h" || argv[0] == "--help") {
 		fmt.Println("usage: repoman badcode [-h] {check} ...")
 		fmt.Println()
@@ -277,7 +278,8 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-065-badcode.html")
 		fmt.Println("for the full design rationale and how this integrates with relcore.")
-		webhelp.PrintIfAvailable(os.Stdout, "repoman-065-badcode")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-065-badcode", argv)
 		return 0
 	}
 
@@ -294,6 +296,9 @@ func Run(argv []string) int {
 
 	if len(patterns) == 0 {
 		fmt.Printf("WARN no badcode patterns configured in %s -- nothing checked\n", dir)
+		fmt.Println("     if this project has patterns from a prior session, check your own")
+		fmt.Println("     notes/memory and recreate them here before release work -- this config")
+		fmt.Println("     is deliberately never stored in the repository itself")
 		fmt.Println("BADCODE CHECK OK (0 patterns configured)")
 		return 0
 	}

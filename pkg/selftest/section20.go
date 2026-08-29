@@ -1,7 +1,6 @@
 package selftest
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -98,6 +97,5 @@ func runSection20(g *gate, root string) int {
 		return 1
 	}
 
-	fmt.Printf("selftest: all %d checks green\n", g.checks)
-	return 0
+	return runSection21(g, root)
 }

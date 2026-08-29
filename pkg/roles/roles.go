@@ -1180,10 +1180,12 @@ for the full per-language reference and known limits.
 `
 
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(rolesHelp)
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-050-roles")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-050-roles", argv)
 			return 0
 		}
 	}

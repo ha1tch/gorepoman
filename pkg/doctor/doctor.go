@@ -489,10 +489,12 @@ for the full getting-started guide.
 `
 
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(doctorHelp)
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-030-getting-started")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-030-getting-started", argv)
 			return 0
 		}
 	}

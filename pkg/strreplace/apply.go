@@ -599,6 +599,7 @@ func cmdApply(argv []string) int {
 
 // Run implements `repoman strreplace <apply|selftest> ...`.
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	if len(argv) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: repoman strreplace <apply|selftest> ...")
 		return 1
@@ -617,7 +618,8 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-040-editing.html")
 		fmt.Println("for worked examples of the full find -> apply/sub workflow.")
-		webhelp.PrintIfAvailable(os.Stdout, "repoman-040-editing")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-040-editing", argv)
 		return 0
 	case "apply":
 		for _, a := range argv[1:] {

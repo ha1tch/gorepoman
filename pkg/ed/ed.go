@@ -207,6 +207,7 @@ func revertTxn(t Txn) error {
 }
 
 func Run(args []string) int {
+	args = webhelp.NormalizeBriefFirst(args)
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: repoman ed <find|apply|sub|undo|mark|log|selftest> ...")
 		return 1
@@ -227,7 +228,8 @@ func Run(args []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-040-editing.html")
 		fmt.Println("for worked examples of the full find -> apply/sub workflow.")
-		webhelp.PrintIfAvailable(os.Stdout, "repoman-040-editing")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-040-editing", args)
 		return 0
 
 	case "find":

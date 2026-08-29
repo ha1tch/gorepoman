@@ -346,6 +346,7 @@ func requireDocs(trackingPath, planPath string) error {
 
 // Run implements `repoman addwave [flags]`.
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Println("usage: repoman addwave [-h] --name NAME --ideal-days IDEAL_DAYS --items-json")
@@ -423,7 +424,8 @@ func Run(argv []string) int {
 			fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-080-waves.html")
 			fmt.Println("for the full worked example, and `repoman waveprogress -h` for")
 			fmt.Println("rendering and hiding waves afterward.")
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-080-waves")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-080-waves", argv)
 			return 0
 		}
 	}

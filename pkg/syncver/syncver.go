@@ -138,10 +138,12 @@ for how this fits into a full release alongside relcore.
 `
 
 func Run(args []string) int {
+	args = webhelp.NormalizeBriefFirst(args)
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
 			fmt.Print(syncverHelp)
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases", args)
 			return 0
 		}
 	}

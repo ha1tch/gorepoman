@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.12.0] - 2026-08-28
+
+- **New: `--brief` -- a per-call override that skips the live-fetch**
+  **addition to `-h`/`--help`, alongside the existing session-wide**
+  **`REPOMAN_NO_WEB_HELP=1`.** Both now exist because they solve
+  different problems: the environment variable is a standing decision
+  ("I know this tool, stop fetching, for the rest of this session"),
+  which doesn't fit a session that hasn't made that decision but wants
+  one specific call, right now, not to wait on a fetch or print a full
+  chapter. Toggling the variable on and off around a single call would
+  be more friction than the thing it replaces; `--brief` exists so
+  that case doesn't have to reach for the coarser tool.
+- **Fixed a real ordering bug found while building this, not shipped**
+  **as a documented caveat**: several commands dispatch strictly on
+  `argv[0]` (`switch args[0] { case "-h", "--help": ... }`), so
+  `--brief -h` failed as an unrecognized command while `-h --brief`
+  worked -- an unmemorable, fragile rule for a flag specifically meant
+  to reduce friction. `webhelp.NormalizeBriefFirst` fixes this at the
+  top of every command's `Run()` (and the top-level dispatcher):
+  if `--brief` is in position 0 and a real help flag appears anywhere
+  later in the same call, that flag is moved to position 0 so the
+  existing dispatch finds it regardless of which order they were
+  typed in. Verified in both orders, across commands using both
+  dispatch styles (positional switch and whole-argv loop), not
+  assumed from one working case.
+- **Fixed a real discoverability gap: neither suppression mechanism**
+  **was mentioned anywhere in the tool's own `-h` output before this.**
+  `REPOMAN_NO_WEB_HELP` existed since the live-fetch feature shipped,
+  documented only in source comments, the changelog, and (as of this
+  release) the docs -- none of which a fresh session encountering this
+  project for the first time would see without already knowing to look.
+  Both are now named, together, in one line (`webhelp.SuppressionNote`)
+  that every command's embedded help text prints unconditionally --
+  written once and reused everywhere, rather than typed out thirteen
+  times with the drift risk that implies. New docs section in
+  `repoman-030-getting-started.md` covering both mechanisms; this
+  feature had no documentation there at all until now, despite two
+  prior releases building and extending it.
+- **Strengthened the badcode-config-recreation reminder at the three**
+  **points it actually matters**, prompted by a real session correctly
+  recreating a project's config from its own notes with nothing in
+  gorepoman itself prompting that step -- the tool only ever said "0
+  patterns configured," a bare count rather than an actionable next
+  step. The actual patterns can never live in this repository (the
+  entire point of keeping the config out-of-band); the procedural
+  reminder to check for and recreate one now does, at the runtime WARN
+  itself, the top-level workflow's releasing step, and `relcore -h` --
+  not only in the docs chapter, which already said this once but isn't
+  where anyone is looking at the moment it matters.
+- Selftest count: 124 -> 133 (9 new checks: 6 for `--brief` -- genuine
+  suppression against a live local server, order independence across
+  two dispatch styles and both orderings, and the mechanism's presence
+  in the embedded help text -- plus 3 confirming the badcode-config
+  reminder appears at each of the three points above).
+
 ## [0.11.0] - 2026-08-28
 
 - **New: `-h`/`--help` on every command optionally fetches its**

@@ -210,10 +210,12 @@ for the full getting-started guide, including this exit-code detail.
 
 // Run implements `repoman selftest [args]` -- the acceptance gate.
 func Run(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(selftestHelp)
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-030-getting-started")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-030-getting-started", argv)
 			return 0
 		}
 	}

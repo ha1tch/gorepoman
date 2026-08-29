@@ -327,6 +327,7 @@ func runBadcodePreflight(root, version string) int {
 }
 
 func Run(args []string) int {
+	args = webhelp.NormalizeBriefFirst(args)
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: repoman relcore <version> [--resume]")
 		return 1
@@ -344,11 +345,15 @@ func Run(args []string) int {
 		fmt.Println("  --resume")
 		fmt.Println()
 		fmt.Println("Runs `badcode check` unconditionally first, before any release.steps")
-		fmt.Println("entry, including on --resume. See")
+		fmt.Println("entry, including on --resume. Its config is deliberately never stored")
+		fmt.Println("in this repository -- if this project has one from a prior session,")
+		fmt.Println("check your own notes/memory and recreate it before running this, not")
+		fmt.Println("after badcode reports nothing configured. See")
 		fmt.Println("https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
 		fmt.Println("for the full release workflow, and repoman-065-badcode.html for")
 		fmt.Println("that gate specifically.")
-		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases", args)
 		return 0
 	}
 

@@ -207,6 +207,7 @@ func cmdCheck(root string, strictRelative bool) int {
 
 // Run implements `repoman gomod check [path] [--strict-relative-replace]`.
 func Run(args []string) int {
+	args = webhelp.NormalizeBriefFirst(args)
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
 		fmt.Println("usage: repoman gomod [-h] {check} ...")
 		fmt.Println()
@@ -222,7 +223,8 @@ func Run(args []string) int {
 		fmt.Println()
 		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
 		fmt.Println("for how this fits into a full release alongside syncver and relcore.")
-		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases", args)
 		return 0
 	}
 	if len(args) == 0 || args[0] != "check" {
@@ -243,7 +245,8 @@ func Run(args []string) int {
 			fmt.Println("                        directives, not just absolute ones")
 			fmt.Println()
 			fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
-			webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases", args)
 			return 0
 		}
 	}

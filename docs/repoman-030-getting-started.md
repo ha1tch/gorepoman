@@ -114,6 +114,30 @@ already calls both as part of its own run, but running one in isolation
 is useful when you're specifically debugging that tool rather than the
 whole suite.
 
+## `-h`/`--help`: live docs, with two ways to skip them
+
+Every command's `-h`/`--help` prints its own embedded usage text first,
+unconditionally, then attempts a live fetch of the matching chapter from
+this project's own docs site -- an addition, never a replacement, and
+one that fails completely silently (nothing printed, no hang) if the
+network isn't reachable. The embedded text alone is always enough to use
+the command; the live fetch is a bonus when it's available.
+
+Two ways to skip the fetch, for two different situations:
+
+- `REPOMAN_NO_WEB_HELP=1` -- a standing decision for a session: "I
+  already know this tool, stop fetching." Set once, applies to every
+  `-h` call for the rest of that session.
+- `--brief` -- a per-call override, for the opposite case: the variable
+  isn't set, but *this specific* `-h` call shouldn't wait on a fetch or
+  print a full chapter. Works in either position (`repoman ed -h --brief`
+  or `repoman ed --brief -h`) -- deliberately, since remembering a
+  specific argument order for a flag meant to reduce friction would just
+  be a different kind of friction.
+
+Both are named in the embedded help text itself, every time, so neither
+needs to be already known to be discovered.
+
 ## Opting in: `.repoman.json`
 
 A repository opts in by having a `.repoman.json` file at its root. An empty

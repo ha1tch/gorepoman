@@ -17,6 +17,7 @@ import (
 	"github.com/ha1tch/gorepoman/pkg/strreplace"
 	"github.com/ha1tch/gorepoman/pkg/syncver"
 	"github.com/ha1tch/gorepoman/pkg/waveprogress"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // version is overridden at build time via
@@ -60,7 +61,10 @@ func printUsage() {
 	fmt.Println("     `repoman gomod check` for go.mod/go.sum sanity, then")
 	fmt.Println("     `repoman relcore <version>` to orchestrate the release itself --")
 	fmt.Println("     this runs `badcode check` unconditionally first, before anything")
-	fmt.Println("     else, including on --resume.")
+	fmt.Println("     else, including on --resume. Its config is deliberately never")
+	fmt.Println("     stored in this repository -- if this project has one from a prior")
+	fmt.Println("     session, check your own notes/memory and recreate it before")
+	fmt.Println("     release work, not after `badcode` reports nothing configured.")
 	fmt.Println("\nRun `repoman <command> -h` for help on a specific command -- every")
 	fmt.Println("command's help links to the matching chapter of the full docs.")
 	fmt.Println("Full documentation: https://ha1tch.github.io/gorepoman/")
@@ -84,6 +88,12 @@ func isHelpFlag(s string) bool {
 }
 
 func main() {
+	// Same reasoning as NormalizeBriefFirst applies at the top level:
+	// `repoman --brief -h` would otherwise dispatch "--brief" as an
+	// unrecognized command before ever reaching the help check below.
+	rest := webhelp.NormalizeBriefFirst(os.Args[1:])
+	os.Args = append(os.Args[:1], rest...)
+
 	if len(os.Args) >= 2 && (os.Args[1] == "version" || os.Args[1] == "--version" || os.Args[1] == "-v") {
 		fmt.Println("repoman " + version)
 		os.Exit(0)
