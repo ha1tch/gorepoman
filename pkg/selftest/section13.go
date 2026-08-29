@@ -1,7 +1,6 @@
 package selftest
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,6 +82,5 @@ func runSection13(g *gate, root string) int {
 		return 1
 	}
 
-	fmt.Printf("selftest: all %d checks green\n", g.checks)
-	return 0
+	return runSection14(g, root)
 }

@@ -162,14 +162,34 @@ func Check(paths []string, patterns []Pattern) []Match {
 			continue
 		}
 		text := string(b)
-		lowerText := strings.ToLower(text)
 		lines := strings.Split(text, "\n")
-		for i, lp := range lowerPatterns {
-			if !strings.Contains(lowerText, lp) {
+		// joined is text with every newline BYTE REMOVED (not replaced
+		// with a space -- that would just substitute one separator for
+		// another and still miss the case a wrap creates). lineOf[i]
+		// gives the 1-indexed source line the i-th byte of joined came
+		// from, built in the same pass, so a match found in joined can
+		// be mapped back to real line numbers without re-scanning.
+		// Exists to catch a pattern split across a line boundary -- an
+		// ordinary line wrap is enough to do this by complete accident,
+		// not just deliberate evasion, and that's exactly the class of
+		// gap a literal-substring check has no business leaving open
+		// given what this tool exists to catch.
+		var joinedB strings.Builder
+		lineOf := make([]int, 0, len(text))
+		lineNo := 1
+		for i := 0; i < len(text); i++ {
+			if text[i] == '\n' {
+				lineNo++
 				continue
 			}
-			// Found somewhere in the file; walk lines to report
-			// exactly where (every occurrence, not just the first).
+			joinedB.WriteByte(text[i])
+			lineOf = append(lineOf, lineNo)
+		}
+		lowerJoined := strings.ToLower(joinedB.String())
+		joined := joinedB.String()
+
+		for i, lp := range lowerPatterns {
+			// Per-line pass: the precise, single-line matches.
 			for lineNo, line := range lines {
 				if strings.Contains(strings.ToLower(line), lp) {
 					snippet := strings.TrimSpace(line)
@@ -183,6 +203,38 @@ func Check(paths []string, patterns []Pattern) []Match {
 						Snippet: snippet,
 					})
 				}
+			}
+			// Fold pass: search the newline-stripped text for anything
+			// that genuinely spans more than one source line -- a
+			// same-line match here was already reported above, so it's
+			// skipped to avoid double-counting, not missed.
+			searchFrom := 0
+			for {
+				idx := strings.Index(lowerJoined[searchFrom:], lp)
+				if idx < 0 {
+					break
+				}
+				pos := searchFrom + idx
+				searchFrom = pos + 1
+				if pos+len(lp) > len(lineOf) {
+					continue
+				}
+				startLine := lineOf[pos]
+				endLine := lineOf[pos+len(lp)-1]
+				if startLine == endLine {
+					continue // fully on one line -- the per-line pass already has it
+				}
+				snippet := joined[pos : pos+len(lp)]
+				if len(snippet) > 120 {
+					snippet = snippet[:120]
+				}
+				matches = append(matches, Match{
+					Pattern: patterns[i],
+					File:    f,
+					Line:    startLine,
+					Snippet: fmt.Sprintf("[spans lines %d-%d, pattern split across a line wrap] %s",
+						startLine, endLine, snippet),
+				})
 			}
 		}
 	}

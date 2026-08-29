@@ -1,5 +1,131 @@
 # Changelog
 
+## [0.8.0] - 2026-08-28
+
+- **Fixed a real gap in `badcode`, the mandatory release-blocking**
+  **forbidden-string gate: it only ever matched per-line, so a forbidden**
+  **pattern split across an ordinary line wrap sailed straight through**
+  **undetected.** Confirmed directly: `"TOPSECRET\nVALUE"` across two
+  lines, checked against the pattern `"TOPSECRETVALUE"`, passed cleanly
+  before this fix -- and this is not a contrived adversarial case, an
+  ordinary line wrap in a long identifier or a reflowed paragraph is
+  enough to trigger it by complete accident. Given what this gate exists
+  to catch, an accidental miss is exactly as bad as one that took
+  deliberate effort. Fixed with a second pass that folds newlines out of
+  the text (removed, not replaced with a space -- an earlier attempt at
+  this fix replacing `\n` with `" "` still failed to reconstruct the
+  original contiguous string and had to be corrected) and maps matches
+  back to real source line numbers, reporting a `[spans lines N-M]`
+  marker so the failure message stays precise about what happened.
+  Verified: the original 2-line case, a 3-line span, no false positive
+  on ordinary unrelated adjacent lines, and no double-counting of a
+  match that was already fully on one line (the existing per-line pass
+  still runs first and is unchanged) -- all four now permanent
+  regression checks. All 7 pre-existing badcode selftest checks
+  unaffected.
+- **Regression tests added for the two real bugs fixed in v0.7.0 and**
+  **v0.7.1**: `register add` against a genuinely empty table (the fix
+  that removed the seed-row requirement), and an honest explanation, in
+  the source itself, of why the doctor `cmd.Dir` isolation fix does
+  *not* get an automated nested-`selftest` regression -- tried twice,
+  found a real Go `os/exec` hazard (a subprocess that spawns many
+  further subprocesses can leave a grandchild holding the output pipe
+  open, hanging `cmd.Wait()`) and then a deeper, structural one (the
+  binary under test recursively contains the very check that would nest
+  it, so nesting `self` means the child tries to nest itself too,
+  unboundedly). Shipping a check that can recurse without bound would be
+  a worse defect than the one it exists to catch; that fix stands on its
+  existing direct verification instead (mechanism confirmed in
+  `pkg/doctor/doctor.go`'s own source; isolated-vs-unisolated invocation
+  compared directly; 30 repeated runs clean from the exact hostile
+  directory that originally failed).
+- **The pipe-exit-code trap, independently hit by more than one session,
+  is now addressed on both sides.** Confirmed directly: `repoman selftest
+  2>&1 | tail -N; echo $?` reports `tail`'s exit code, not `repoman`'s --
+  a real failure (genuine exit 1) can show `$?` as `0` under exactly this
+  pattern, which is precisely backwards from what it looks like it's
+  telling you. This is not fixable from inside `repoman` (nothing
+  printed to stdout can change what a shell pipeline reports as `$?`),
+  so it's addressed two ways: documented explicitly, with three working
+  alternatives (capture-then-check, `${PIPESTATUS[0]}`, `pipefail`), in
+  both `SKILL.md` and `repoman-030-getting-started.md`; and `selftest`
+  now prints an unambiguous, impossible-to-misread closing line on
+  failure (`SELFTEST FAILED -- do not trust this build`, symmetric with
+  the existing `selftest: all N checks green` on success), deliberately
+  the very last thing printed so it survives even a small `tail -N`
+  regardless of whether the exit code itself was read correctly.
+- **8 new adversarial checks**, each verified manually against the real
+  binary before being written down as permanent coverage: a negative
+  `expect` count, `expect=0` against text actually present, an empty
+  search string, and a zero-width joiner smuggled into search text all
+  refuse cleanly rather than misbehaving (count-mismatch or 0-occurrence
+  refusal, file left untouched in every case); `search == replace`
+  succeeds as a genuine no-op *and* leaves the file unwritten on disk
+  (confirmed via an empty `written` list, not just a successful exit
+  code); and a 150-op atomic batch with only the very last op
+  deliberately broken confirmed true all-or-nothing at real scale --
+  `ops_completed_before_refusal: 149`, and all 150 files verified
+  unchanged, not just spot-checked.
+- Selftest count: 86 -> 100 (2 register regression + 4 badcode
+  cross-line regression + 8 adversarial).
+
+## [0.7.1] - 2026-08-28
+
+- **Fixed two real selftest checks that failed when `repoman selftest` was**
+  **invoked from inside a real project with a `go.mod` floor above the**
+  **release binary's own compile-time Go version** -- confirmed as a real
+  field incident, not a synthetic worry: a fresh session's very first
+  `repoman selftest` run, from inside a Go project declaring `go 1.25`
+  against a release binary CI compiled with Go 1.21, failed on
+  `doctor under an emptied PATH...` with `EXIT:0` from the shell (a red
+  herring -- that exit code was `tail`'s, not `repoman`'s, piped through
+  without `pipefail`).
+- **Root cause, confirmed by reading the actual code, not inferred from**
+  **symptoms**: both of the two `doctor`-invoking checks in this section
+  built their subprocess via a raw `exec.Command(self, "doctor", ...)`
+  call that never set `cmd.Dir` -- unlike every other check in this gate,
+  which threads an explicit directory through the shared `run()`/
+  `runWithEnv()` helpers. Left unset, the subprocess inherits whatever
+  directory the outer `repoman selftest` itself was invoked from. `doctor`
+  reads `go.mod` relative to that directory (confirmed in
+  `pkg/doctor/doctor.go`); when that directory happens to be a real
+  project with a floor above the binary's own `runtime.Version()`,
+  `doctor` correctly reports the mismatch and exits non-zero for it --
+  which the test never anticipated, since "emptied PATH" was only ever
+  meant to affect the tool-detection half of `doctor`'s output, not
+  accidentally also pick up an unrelated project's version requirement
+  by way of which directory the whole test suite happened to run from.
+  `doctor`'s own comparison logic is correct and was not changed; the bug
+  was the test harness's own directory hygiene.
+- **Not a narrow, unlikely trigger**: this reproduces for any project
+  whose `go.mod` floor exceeds whichever Go version CI happens to compile
+  the release binary with (currently pinned at 1.21) -- which is most
+  actively developed Go projects, including this working agreement's own
+  default of `go 1.25` for new projects. Confirmed directly: reproduced
+  with the actual v0.7.0 release binary run from a directory declaring
+  `go 1.25`, fixed, then confirmed clean across 30 repeated runs from that
+  same directory.
+- **Fix**: both checks now run their `doctor` subprocess inside a
+  dedicated, freshly created, guaranteed-empty temporary directory --
+  deliberately not the shared `root` fixture other checks in this gate
+  use, since reusing it would only trade one accidental directory
+  dependency for another (a go.mod some other, later-added check might
+  someday write into `root` for its own purposes). Verified the isolation
+  mechanism directly, not just the pass/fail outcome: the same binary,
+  invoked once unisolated inside the `go 1.25` fixture (correctly still
+  shows the real mismatch -- `doctor`'s own detection logic is unchanged)
+  and once via the fixed, isolated invocation pattern (shows "floor not
+  determined" -- confirming no external `go.mod` is visible to it at
+  all), before relying on the full suite's aggregate pass/fail.
+- Swept every other `exec.Command(self, ...)` call in the selftest
+  package for the same missing-`cmd.Dir` pattern before considering this
+  closed, per this project's own completion-sweep principle: one further
+  raw call (`gomod check`) is safe -- it takes its target as an explicit
+  absolute-path argument, not a `cmd.Dir`-relative one -- and both shared
+  helpers (`run()`, `runWithEnv()`) already thread an explicit directory
+  through correctly, confirming every other check in the suite was
+  already safe.
+
 ## [0.7.0] - 2026-08-28
 
 - **Fixed `register add` refusing on a genuinely empty table** (header +

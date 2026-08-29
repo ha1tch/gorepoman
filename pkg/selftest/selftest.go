@@ -68,6 +68,28 @@ func run(self, cwd string, args ...string) runResult {
 	return runResult{stdout.String(), stderr.String(), code}
 }
 
+// runWithStdin is run() with a payload fed on stdin, for commands
+// (like `strreplace apply -`) that read their input that way rather
+// than from a file argument.
+func runWithStdin(self, cwd, stdin string, args ...string) runResult {
+	cmd := exec.Command(self, args...)
+	cmd.Dir = cwd
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else {
+			code = 1
+		}
+	}
+	return runResult{stdout.String(), stderr.String(), code}
+}
+
 // gate carries the running state of the acceptance walk: which
 // binary to re-invoke, which directory to run it in, and how many
 // checks have passed so far.
@@ -85,6 +107,27 @@ type gate struct {
 func (g *gate) check(cond bool, label, detail string) bool {
 	if !cond {
 		fmt.Printf("FAIL: %s\n%s\n", label, detail)
+		// Deliberately loud and impossible to misread, symmetric with
+		// "selftest: all N checks green" on success. A "FAIL:" line
+		// alone was observed, independently, in more than one session,
+		// getting misread against a check's own description text
+		// (several check names legitimately contain the phrase "exits
+		// 0" as part of describing what they verify -- e.g. "doctor
+		// under an emptied PATH... still exits 0" -- which reads, on a
+		// fast skim, uncomfortably close to a claim about this run's
+		// own result). This line carries no such ambiguity, and -- more
+		// importantly than wording -- it is deliberately the last thing
+		// printed before the process exits non-zero, specifically so it
+		// survives being piped through `tail` even at a small N. It is
+		// not a fix for the actual failure mode observed in practice
+		// (piping through `tail`/`head` without `pipefail` silently
+		// replaces this process's own exit code with the pipe's --
+		// nothing printed to stdout can fix a shell construct that
+		// never looks at stdout to determine success) -- see
+		// repoman-030-getting-started.md for that half of it -- but it
+		// means the plain text of the output is never itself the
+		// ambiguous part.
+		fmt.Println("SELFTEST FAILED -- do not trust this build")
 		return false
 	}
 	g.checks++

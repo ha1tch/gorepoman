@@ -256,8 +256,24 @@ func runSection10Plus(g *gate, root, cfgPath string) int {
 		return 1
 	}
 
+	// This check is specifically about PATH-emptying behaviour, nothing
+	// else -- so it runs in its own guaranteed-empty directory, not the
+	// shared `root` fixture other checks in this gate use. Reusing
+	// `root` would make this check's result depend on whatever else
+	// happens to exist there at this point in the run (a go.mod from an
+	// unrelated check, for instance) -- exactly the class of bug this
+	// fix exists to remove, not something to reintroduce by sharing a
+	// directory that was never meant to stay empty.
+	emptyPathDir, err := os.MkdirTemp("", "repoman-selftest-emptypath-*")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer os.RemoveAll(emptyPathDir)
+
 	emptyEnv := append(os.Environ(), "PATH=/nonexistent-empty-path")
 	cmd := exec.Command(self, "doctor")
+	cmd.Dir = emptyPathDir
 	cmd.Env = filterAndSet(emptyEnv, "PATH", "/nonexistent-empty-path")
 	out, err := cmd.CombinedOutput()
 	rc := exitCodeOf(err)
@@ -268,6 +284,7 @@ func runSection10Plus(g *gate, root, cfgPath string) int {
 	}
 
 	cmd = exec.Command(self, "doctor", "--quiet")
+	cmd.Dir = emptyPathDir // same isolation reason as the call directly above
 	cmd.Env = filterAndSet(emptyEnv, "PATH", "/nonexistent-empty-path")
 	out, err = cmd.CombinedOutput()
 	rc = exitCodeOf(err)

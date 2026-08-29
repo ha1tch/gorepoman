@@ -78,6 +78,36 @@ back to plain, careful manual editing rather than trusting `ed`/
 `str_replace_extended` in that state, and flag it before doing anything
 else.
 
+**If you're checking the result by piping through `tail`/`head` and then
+reading `$?`, that `$?` is not `selftest`'s exit code.** This has
+independently confused more than one session, so it's worth being
+explicit rather than assuming it's obvious: in `cmd | tail -N`, the
+shell's `$?` reports `tail`'s exit status, not `cmd`'s -- and `tail`
+almost always exits 0 regardless of what it read. A build that actually
+failed (real exit 1) can show `$?` as `0` under exactly this pattern,
+which is precisely backwards from what it looks like it's telling you.
+Three ways to check the real result instead:
+
+```
+# option 1: capture to a file, THEN check $?, THEN look at the tail
+repoman selftest > /tmp/out.txt 2>&1; echo "exit: $?"; tail -20 /tmp/out.txt
+
+# option 2: bash's own array of each pipeline stage's exit code
+repoman selftest 2>&1 | tail -20; echo "real exit: ${PIPESTATUS[0]}"
+
+# option 3: pipefail makes $? reflect the pipeline's failing stage
+set -o pipefail
+repoman selftest 2>&1 | tail -20; echo "exit: $?"
+```
+
+The last printed line is also deliberately unambiguous either way --
+`selftest: all N checks green` on a real pass, `SELFTEST FAILED -- do
+not trust this build` on a real failure -- specifically so the plain
+text survives even a small `tail -N` regardless of which of the above
+you use. But text surviving a truncation and a shell correctly
+reporting an exit code are two different guarantees; check the actual
+result, don't infer it from either alone.
+
 `strreplace`'s own selftest (`repoman strreplace selftest`) and `ed`'s
 own (`repoman ed selftest`) can each also be run standalone — `selftest`
 already calls both as part of its own run, but running one in isolation
