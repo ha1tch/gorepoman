@@ -1,5 +1,97 @@
 # Changelog
 
+## [0.10.0] - 2026-08-28
+
+- **Fixed four more subcommands with zero help handling, found by**
+  **actually surveying every command's `-h` output rather than assuming**
+  **the v0.9.0 fix covered everything.** `roles -h` was treating `-h`
+  as its search term and actually scanning the whole tree; `syncver -h`
+  rejected it as an unknown command; `doctor -h` and `selftest -h` both
+  silently ran their real operations instead of showing help --
+  `selftest` running the *entire* 100+ check acceptance gate being the
+  worst case, since a fresh session asking "what does this do" would
+  have triggered a full, real test run by accident. All four now show
+  real help and exit 0; confirmed normal (non-help) invocation of each
+  is unaffected.
+- **Added a "Typical workflow" section to the top-level help**,
+  reachable via all four help spellings fixed in v0.9.0: install ->
+  selftest -> `ed find`/`apply`/`sub` for editing -> `register` for
+  open work -> `addwave`/`waveprogress` for staged programmes ->
+  `syncver`/`gomod check`/`relcore` for releases -- plus the explicit
+  reminder that an existing register ticket attaches to a wave via
+  `--items-json`'s `register_item` field, not a separate command.
+- **Added docs URLs (the GitHub Pages mirror) to every subcommand's**
+  **help text that didn't already have one** -- `roles`, `syncver`,
+  `doctor`, `selftest`, `ed`, `strreplace`, `register`, `guards`,
+  `relcore`, `gomod`, and `badcode check` all now link to their
+  matching chapter. Found and replaced one genuinely useless existing
+  pointer along the way: `register -h` said "see module docstring",
+  which isn't something a CLI session has any way to act on.
+- **New documentation chapter: `docs/repoman-065-badcode.md`.**
+  `badcode` -- the mandatory, unconditional release gate -- had no
+  dedicated chapter in the staged documentation set at all, despite
+  being safety-critical and the subject of a real bug fix in v0.8.0.
+  Covers the config-outside-the-repo design constraint, both file
+  formats, literal-substring matching (including the cross-line-wrap
+  behaviour from v0.8.0), worked examples, and the relcore integration.
+  Caught and fixed a real mistake while writing it: the first draft
+  used a real name as the example matched string in a "here's what a
+  refusal looks like" example -- which would have shipped that name
+  into the public repo, exactly the class of leak this feature exists
+  to prevent. Replaced with a generic placeholder before this shipped.
+  Every example output in the chapter verified against the real binary
+  rather than written from memory; one was wrong on the first pass
+  (the no-config-configured message's exact wording and line order)
+  and corrected after checking.
+- Selftest count: 112 -> 121 (9 new regression checks: 4 for the
+  previously-unhandled subcommands, 1 for the workflow section, 4 for
+  a representative sample of the new URL references).
+
+## [0.9.0] - 2026-08-28
+
+- **All four spellings of "help" now work everywhere, not just `-h`**
+  **at the subcommand level.** Confirmed as a real field incident: a
+  fresh session tried `help`, `--help`, and `-help` at the top level in
+  turn -- every one hit "unknown command" and exit 1 -- before
+  eventually discovering `-h` worked, and even then only once tried
+  against a specific subcommand rather than bare. Root cause: every
+  subcommand's own parser already correctly handled `-h`/`--help`
+  internally, but nothing at the top level recognized any of the four
+  forms as a request for help at all -- `help`, `--help`, `-help`, and
+  even bare `-h` were all routed to the same "unknown command" path as
+  a genuine typo. Fixed in exactly one place (`cmd/repoman/main.go`)
+  rather than fourteen: the top level now recognizes all four forms
+  directly, and normalizes the two a subcommand's own parser didn't
+  already handle (bare `help`, single-dash `-help`) into `-h` before
+  dispatch, so every subcommand gains full coverage with no change to
+  its own logic. Verified against multiple subcommands, not just one.
+- **Fixed `waveprogress -h`/`--help` producing no help at all.** It had
+  no help handling of any kind -- `-h` fell straight through to normal
+  execution, which then failed with an unrelated-looking runtime error
+  ("no wave-tracking document at ... -- nothing to do") instead of
+  explaining what the command does. Given this session's actual
+  reported friction was specifically about understanding the wave
+  system, this was very likely a direct contributor: anyone reaching
+  for `waveprogress -h` to understand waves got what looked like an
+  unrelated environment failure instead of any explanation at all.
+  Added a full help text explaining what the command does, how it
+  relates to `addwave` and the register, and pointing at
+  `docs/repoman-080-waves.md` for the worked example -- confirmed the
+  normal (non-help) invocation path is unaffected.
+- **Clarified the actual gap in the mental model, not just the missing
+  text**: there is no separate command for associating an existing
+  register ticket with a new wave -- that happens at wave-creation
+  time, via `addwave`'s `--items-json`, by setting the matching item's
+  `register_item` field to the ticket's id. Neither `addwave -h` nor
+  the top-level command list said this in so many words before now.
+  `addwave -h` now states this explicitly and points at the same docs
+  page; the top-level one-line description for `addwave` now hints at
+  the register connection too ("existing register items attach here")
+  rather than reading as pure wave-creation with no indication existing
+  work can be pulled in.
+- Selftest count: 100 -> 112 (8 help-flag regression checks + 4
+  discoverability regression checks).
+
 ## [0.8.0] - 2026-08-28
 
 - **Fixed a real gap in `badcode`, the mandatory release-blocking**

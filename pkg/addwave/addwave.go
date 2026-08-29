@@ -358,6 +358,13 @@ func Run(argv []string) int {
 			fmt.Println("numbers computed from the actual current state of both documents --")
 			fmt.Println("not supplied by the caller and not guessed.")
 			fmt.Println("")
+			fmt.Println("There is no separate command for putting an EXISTING register")
+			fmt.Println("ticket (a T-nn item) into a new wave -- that association is made")
+			fmt.Println("right here, at wave-creation time: give that ticket's id as the")
+			fmt.Println("\"register_item\" field of the matching entry in --items-json (see")
+			fmt.Println("the worked example under Usage below). An item with no ticket yet")
+			fmt.Println("filed can omit register_item and be linked to one later by hand.")
+			fmt.Println("")
 			fmt.Println("Translated from repoman/add_wave.py, which carries the original")
 			fmt.Println("design rationale in full -- reproduced here since it still governs")
 			fmt.Println("this command's behaviour unchanged:")
@@ -411,6 +418,9 @@ func Run(argv []string) int {
 			fmt.Println("                        Override the computed wave number. Still checked for")
 			fmt.Println("                        collision.")
 			fmt.Println("  --dry-run")
+			fmt.Println("")
+			fmt.Println("See docs/repoman-080-waves.md for the full worked example, and")
+			fmt.Println("`repoman waveprogress -h` for rendering and hiding waves afterward.")
 			return 0
 		}
 	}

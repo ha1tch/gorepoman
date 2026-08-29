@@ -165,8 +165,43 @@ func saveCfgMap(path string, m map[string]interface{}) {
 	mustWrite(path, string(b))
 }
 
+const selftestHelp = `usage: repoman selftest [-h]
+
+repoman selftest -- the acceptance gate. Prints doctor's environment
+summary first (informational only -- an absent optional tool never
+fails this gate), then exercises every tool against a synthetic
+repository it builds in an isolated temp directory: ed's own
+embedded selftest, roles, syncver, register, guards, wave tracking,
+relcore, and sections targeting specific real bugs found in this
+project's own history rather than speculative edge cases.
+
+Takes no arguments beyond -h -- there is no way to run a subset of
+checks, deliberately: a red gate means something in this environment
+doesn't match what the tools assume, and that's exactly the moment
+partial results would be most likely to be misread as "good enough".
+
+Prints "selftest: all N checks green" and exits 0 on a genuine pass,
+or "SELFTEST FAILED -- do not trust this build" and exits 1 on the
+first check that fails. Checking the real exit code matters: piping
+through tail/head and reading $? reports that stage's exit code, not
+this command's -- capture to a file first, use ${PIPESTATUS[0]}, or
+set pipefail.
+
+Options:
+  -h, --help   Show this help message and exit.
+
+See https://ha1tch.github.io/gorepoman/docs/repoman-030-getting-started.html
+for the full getting-started guide, including this exit-code detail.
+`
+
 // Run implements `repoman selftest [args]` -- the acceptance gate.
-func Run(_ []string) int {
+func Run(argv []string) int {
+	for _, a := range argv {
+		if a == "-h" || a == "--help" {
+			fmt.Print(selftestHelp)
+			return 0
+		}
+	}
 	fmt.Println("-- environment --")
 	doctor.Run([]string{"--quiet"})
 	fmt.Println("-- acceptance gate --")

@@ -463,7 +463,37 @@ func orUnknown(s string) string {
 }
 
 // Run implements `repoman doctor [--quiet]`.
+const doctorHelp = `usage: repoman doctor [-h] [--quiet]
+
+repoman doctor -- an environment diagnostic, not a pass/fail test.
+Reports the Go version this binary was compiled with, the current
+platform, and which of four optional external tools (gofmt, bash,
+node, pyyaml) this environment has -- each with exactly what it
+enables and what the fallback is when it's absent. An absent
+optional tool is never a failure here; every one has a documented
+degraded-but-real fallback, and this command exists so that's a
+visible, informed choice rather than a silent one.
+
+Options:
+  --quiet      Drop the per-tool detail; print only the Go and
+                platform baseline.
+  -h, --help   Show this help message and exit.
+
+Run this before ` + "`repoman selftest`" + `, the actual acceptance gate --
+selftest prints this same summary first, informationally, then goes
+on to actually exercise every tool.
+
+See https://ha1tch.github.io/gorepoman/docs/repoman-030-getting-started.html
+for the full getting-started guide.
+`
+
 func Run(argv []string) int {
+	for _, a := range argv {
+		if a == "-h" || a == "--help" {
+			fmt.Print(doctorHelp)
+			return 0
+		}
+	}
 	quiet := false
 	for _, a := range argv {
 		if a == "--quiet" {

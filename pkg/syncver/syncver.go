@@ -112,7 +112,37 @@ func Bump(part, root string, cfg *config.Config) (string, error) {
 }
 
 // Run executes the syncver command
+const syncverHelp = `usage: repoman syncver [-h] {show,set,check,bump-patch,bump-minor,bump-major} ...
+
+repoman syncver -- keeps the VERSION file and every configured
+version_targets entry (in .repoman.json) in agreement, so a release
+never ships with a version string correct in one file and stale in
+another.
+
+Subcommands:
+  show          Print the current version and whether every target
+                 is in sync (the default with no subcommand given).
+  set VERSION    Set an explicit version everywhere at once.
+  check          Same check as show, but exits non-zero on a
+                 mismatch -- for CI use.
+  bump-patch     Increment the patch component (x.y.Z) everywhere.
+  bump-minor     Increment the minor component (x.Y.0) everywhere.
+  bump-major     Increment the major component (X.0.0) everywhere.
+
+Options:
+  -h, --help   Show this help message and exit.
+
+See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html
+for how this fits into a full release alongside relcore.
+`
+
 func Run(args []string) int {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			fmt.Print(syncverHelp)
+			return 0
+		}
+	}
 	cmd := "show"
 	if len(args) > 0 {
 		cmd = args[0]

@@ -273,6 +273,9 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("options:")
 		fmt.Println("  -h, --help  show this help message and exit")
+		fmt.Println()
+		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-065-badcode.html")
+		fmt.Println("for the full design rationale and how this integrates with relcore.")
 		return 0
 	}
 

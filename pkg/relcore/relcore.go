@@ -341,6 +341,12 @@ func Run(args []string) int {
 		fmt.Println("options:")
 		fmt.Println("  -h, --help  show this help message and exit")
 		fmt.Println("  --resume")
+		fmt.Println()
+		fmt.Println("Runs `badcode check` unconditionally first, before any release.steps")
+		fmt.Println("entry, including on --resume. See")
+		fmt.Println("https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
+		fmt.Println("for the full release workflow, and repoman-065-badcode.html for")
+		fmt.Println("that gate specifically.")
 		return 0
 	}
 

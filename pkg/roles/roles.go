@@ -1149,7 +1149,41 @@ func Expand(paths []string) []string {
 }
 
 // Run implements the CLI auditor: `repoman roles <term> [path ...]`.
+const rolesHelp = `usage: repoman roles [-h] TERM [path ...]
+
+repoman roles -- finds every occurrence of TERM across the given
+paths (default: the current directory) and classifies each one by
+its syntactic role (go-code, md-prose, md-fence, string-literal,
+comment, and more) so a mass substitution can be split into
+per-role passes instead of run blindly. This is the tool that makes
+"classify every occurrence by its syntactic role before a mass
+substitution" (this project's own central rule) actually checkable
+rather than a manual judgment call.
+
+Usage:
+    repoman roles TERM [path ...]
+
+Examples:
+    repoman roles "oldName"              # search the whole tree
+    repoman roles "oldName" pkg/ cmd/    # search specific paths only
+
+Each match prints as:
+    path:line: [role] trimmed line content
+
+Options:
+  -h, --help   Show this help message and exit.
+
+See https://ha1tch.github.io/gorepoman/docs/repoman-050-roles.html
+for the full per-language reference and known limits.
+`
+
 func Run(argv []string) int {
+	for _, a := range argv {
+		if a == "-h" || a == "--help" {
+			fmt.Print(rolesHelp)
+			return 0
+		}
+	}
 	if len(argv) < 1 {
 		fmt.Println("Usage: repoman roles <term> [path ...]")
 		return 1

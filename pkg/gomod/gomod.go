@@ -217,6 +217,9 @@ func Run(args []string) int {
 		fmt.Println()
 		fmt.Println("options:")
 		fmt.Println("  -h, --help  show this help message and exit")
+		fmt.Println()
+		fmt.Println("See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
+		fmt.Println("for how this fits into a full release alongside syncver and relcore.")
 		return 0
 	}
 	if len(args) == 0 || args[0] != "check" {

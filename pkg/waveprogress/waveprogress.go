@@ -641,8 +641,66 @@ func (e *env) setVisibility(waveID string, visible bool) int {
 	return 0
 }
 
+const waveprogressHelp = `usage: repoman waveprogress [-h] [--show] [--check] [--html PATH]
+                             [--hide WAVE_ID] [--unhide WAVE_ID]
+                             [--include-hidden]
+
+repoman waveprogress -- regenerates a wave-tracking document's own
+"Progress at a glance" summary from each wave's per-item status
+table, and renders that same data as ASCII or HTML progress bars.
+It does not create waves or assign register items to one -- that's
+` + "`repoman addwave`" + `'s job (run ` + "`repoman addwave -h`" + ` for that). This
+command only ever reads and re-renders what addwave, and hand edits
+to each wave's own item table afterward, have already put there.
+
+How waves relate to the register: the register (` + "`repoman register`" + `)
+tracks individual open items (T-nn). Waves are a separate, staged
+programme of work -- "wave 1 is the pool rewrite, wave 2 depends on
+it" -- with their own progress bars and a plan document explaining
+why each wave exists. A register item can belong to a wave via that
+wave's own ` + "`register_item`" + ` field, set when the item was added with
+` + "`addwave`" + `'s --items-json; waves don't replace the register, and
+there is no separate "move a ticket into a wave" command -- an
+existing ticket is associated with a wave at the point the wave's
+items are defined. See docs/repoman-080-waves.md for the full
+worked example, including exactly what that JSON looks like.
+
+Without flags, this regenerates the tracking document's summary
+section in place and exits -- the normal, everyday invocation:
+
+    repoman waveprogress
+
+Flags:
+  --show              Render every visible wave as ASCII progress
+                       bars instead of regenerating the file.
+  --check             Exit non-zero if the summary is stale (CI use)
+                       without writing anything.
+  --html PATH         Render the same view as --show to an HTML
+                       file at PATH instead of ASCII.
+  --hide WAVE_ID       Persist a wave as hidden from --show/--html
+                       (its work still counts toward the overall
+                       total -- visibility is a display concern,
+                       not a completion one).
+  --unhide WAVE_ID     Reverse --hide for one wave id.
+  --include-hidden    For one invocation of --show/--html, render
+                       every wave regardless of persisted visibility,
+                       without changing what's stored.
+
+Requires wave_tracking to be set in .repoman.json (the path to
+WAVE_TRACKING.md); with no waves configured, there is nothing to
+regenerate, and this command says so plainly rather than failing
+with an unrelated-looking error.
+`
+
 // Run implements `repoman waveprogress [flags]`.
 func Run(argv []string) int {
+	for _, a := range argv {
+		if a == "-h" || a == "--help" {
+			fmt.Print(waveprogressHelp)
+			return 0
+		}
+	}
+
 	e, err := newEnv()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
