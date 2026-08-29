@@ -40,10 +40,17 @@ func runSection24(g *gate, root string) int {
 	// With no live toolchain at all, the binary's own version still
 	// reports (it's compiled in, not a PATH lookup), but the live line
 	// must clearly say none was found -- not silently omit itself, and
-	// not claim a version it never confirmed.
+	// not claim a version it never confirmed. A guaranteed-nonexistent
+	// directory, not a small allowlist like /usr/bin:/bin -- confirmed
+	// as a real field incident, not a hypothetical risk: GitHub's own
+	// Ubuntu runner images ship a real go toolchain reachable from
+	// exactly those directories, which this exact check's first
+	// version used and which broke it in CI on the very first run,
+	// despite passing cleanly in every sandbox this had been tested in
+	// up to that point.
 	cmd := exec.Command(self, "doctor", "--quiet")
 	cmd.Dir = root
-	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Env = []string{"PATH=/nonexistent-empty-path"}
 	out, _ := cmd.CombinedOutput()
 	if !g.check(strings.Contains(string(out), "This binary's own Go") &&
 		strings.Contains(string(out), "No live go toolchain on PATH"),

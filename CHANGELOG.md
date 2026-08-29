@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.13.4] - 2026-08-28
+
+- **Fixed a real bug in 0.13.2's own regression test, caught by CI on**
+  **its first real run, not caught in any sandbox this had been tested**
+  **in beforehand.** The "no live toolchain at all" check for `doctor`
+  hardcoded `PATH=/usr/bin:/bin` to simulate a missing `go`, assuming
+  neither directory would ever contain one. GitHub's own Ubuntu runner
+  images ship a real `go` toolchain reachable from exactly those
+  directories -- the test found `go1.24.13` there and failed, correctly,
+  since the assertion ("no live toolchain") was never actually true in
+  that environment. This was never a bug in `doctor` itself -- the
+  fix from 0.13.2 (reporting the binary's own compile-time version and
+  a genuinely-live one as two separate facts) was and remains correct;
+  only this one test's own method of simulating "no live toolchain"
+  was unreliable.
+- **Fix**: the test now points `PATH` at a guaranteed-nonexistent
+  directory instead of a small, assumed-empty allowlist -- the same
+  proven pattern several other checks in this suite already use for
+  exactly this reason. Reproduced the exact CI failure directly before
+  fixing it: placed a real `go` binary at `/usr/bin/go` in a clean
+  environment, confirmed the old test broke exactly as CI showed,
+  applied the fix, confirmed it holds with that same fake `go` still
+  present, then removed it and confirmed the normal path is unaffected.
+  Swept every other use of the same `PATH=/usr/bin:/bin` pattern in
+  this suite (six other call sites) and confirmed none of the others
+  depend on it excluding `go` specifically -- each asserts something
+  unrelated (help text, webhelp suppression, badcode's warning), so
+  none shared this risk.
+- Selftest count unchanged (137) -- this fixes an existing check's own
+  reliability, not new coverage.
+
 ## [0.13.3] - 2026-08-28
 
 - **New documentation chapter: `docs/repoman-035-migration.md`.**
