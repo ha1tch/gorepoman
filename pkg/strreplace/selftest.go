@@ -79,11 +79,13 @@ func SelfTest() int {
 
 	v1 := intPtr(1)
 
-	// 1. Basic sub: count + role match, applies, journals.
+	// 1. Basic sub: count + role match, applies, journals. Not a
+	//    syntax-verification test -- explicitly disabled so this stays
+	//    true regardless of whether gofmt happens to be on PATH.
 	writeFile(th, "t.go", "package main\n\nfunc f() {\n\tx := 1\n\t_ = x\n}\n")
 	r := applyPayload(payloadStr(v1, []opJSON{{
 		File: "t.go", SearchB64: strPtr(b64("x := 1")), ReplaceB64: strPtr(b64("x := 2")),
-		Expect: intPtr(1), Roles: []string{"go-code"},
+		Expect: intPtr(1), Roles: []string{"go-code"}, SyntaxCheck: boolPtr(false),
 	}}))
 	record("1 basic sub applies", r["ok"] == true && strings.Contains(readFile(th, "t.go"), "x := 2"))
 
@@ -278,7 +280,17 @@ func SelfTest() int {
 	record("11 ed undo reverts a str_replace_extended edit", undoOK && strings.Contains(readFile(th, "t9.go"), "k = 1"))
 
 	// 12. atomic batch: a later op's refusal rolls back an earlier
-	//     op's already-staged change in the SAME file.
+	//     op's already-staged change in the SAME file. This is
+	//     specifically about a REAL, gofmt-detected break -- not just
+	//     any refusal -- so the assertion checks the actual error
+	//     class, not merely ok==false. Without that, this looked like
+	//     it passed even when gofmt was genuinely absent, for an
+	//     unrelated reason (syntax-unverifiable, not
+	//     syntax-check-failed) -- a real, confirmed false-confidence
+	//     case: an operator reading "OK" here had no way to know their
+	//     environment couldn't actually exercise what this claims to
+	//     test. Same conditional pattern as check 6, for the same
+	//     reason.
 	writeFile(th, "t10.go", "package main\n\nvar m = 1\nvar n = 1\n")
 	before10 := readFile(th, "t10.go")
 	r = applyPayload(payloadJSON{V: v1, Atomic: boolPtr(true), Ops: []opJSON{
@@ -287,17 +299,23 @@ func SelfTest() int {
 		{File: "t10.go", SearchB64: strPtr(b64("n = 1")), ReplaceB64: strPtr(b64("n = 1\n}")),
 			Expect: intPtr(1), Roles: []string{"go-code"}}, // breaks Go syntax
 	}})
-	record("12 atomic batch rolls back on later syntax failure",
-		r["ok"] == false && readFile(th, "t10.go") == before10)
+	if doctor.WhichGofmt() != "" {
+		record("12 atomic batch rolls back on later syntax failure",
+			r["ok"] == false && errCls(r) == "syntax-check-failed" && readFile(th, "t10.go") == before10)
+	} else {
+		record("12 atomic batch rollback (skipped, no gofmt on PATH)", true)
+	}
 
 	// 13. False-positive guard: inserting a COMPLETE, self-balanced
 	//     string literal into code is legitimate and must NOT be
 	//     refused.
+	//     Not a syntax-verification test -- explicitly disabled so this
+	//     stays true regardless of whether gofmt happens to be on PATH.
 	writeFile(th, "t11.go", "package main\n\nfunc f() {\n\t_ = 1\n}\n")
 	r = applyPayload(payloadStr(v1, []opJSON{{
 		File: "t11.go", SearchB64: strPtr(b64("_ = 1")),
 		ReplaceB64: strPtr(b64(`_ = "a new literal" + "and another"`)),
-		Expect:     intPtr(1), Roles: []string{"go-code"},
+		Expect:     intPtr(1), Roles: []string{"go-code"}, SyntaxCheck: boolPtr(false),
 	}}))
 	record("13 legitimate nested literal insertion NOT refused",
 		r["ok"] == true && strings.Contains(readFile(th, "t11.go"), `"a new literal"`))

@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.13.1] - 2026-08-28
+
+- **Fixed a real gap in 0.13.0's own claim: the acceptance gate could**
+  **still fail in a genuinely toolchain-free environment, through a**
+  **path 0.13.0 never audited.** A field report from an actual
+  toolchain-free session showed `repoman selftest` still red -- not
+  through `gomod` (0.13.0's fix), but through three checks in
+  `strreplace`'s own embedded selftest (1, 12, 13) and one in this
+  suite's own adversarial section, all of which targeted a `.go` file
+  under default settings without ever needing to: basic substitution
+  mechanics, a search==replace no-op, and role-classification
+  correctness have nothing to do with gofmt, but hit the "cannot
+  verify syntax under atomic mode" refusal anyway simply for using a
+  `.go` fixture file.
+- **Root cause, confirmed by direct testing, not inferred from the**
+  **report:** every environment this suite had actually been tested
+  in -- including this one, this whole session -- already had `gofmt`
+  reachable via `WhichGofmt`'s own fallback-stat paths (checking fixed
+  install locations directly, bypassing `PATH` entirely), so clearing
+  `PATH` alone never actually exercised the genuinely-absent case.
+  `REPOMAN_TEST_FORCE_NO_GOFMT`, the one mechanism that genuinely
+  bypasses that fallback, had only ever been exercised by the single
+  check built specifically to use it (15) -- never by anything else
+  that happened to share the same latent dependency by accident.
+  Reproduced the exact failure with the force-override before touching
+  anything, confirmed the wording matched the field report's own error
+  message exactly, then fixed it.
+- **Fix**: `syntax_check:false` added to the three checks with no
+  legitimate reason to depend on gofmt at all (matching the pattern an
+  existing check already used correctly); the fourth (atomic-batch
+  rollback) genuinely is about gofmt-detected syntax breaks, so it
+  keeps checking, but now asserts the specific error class
+  (`syntax-check-failed`) rather than merely `ok == false` -- it had
+  been silently passing for an unrelated reason
+  (`syntax-unverifiable`) whenever gofmt was absent, a real,
+  confirmed false-confidence case an operator reading "OK" had no way
+  to detect. Verified the full gate goes genuinely green under the
+  force-override, not just the individual checks in isolation; then
+  confirmed the normal (gofmt-available) path has zero regressions.
+  Stress-tested 10 runs each way, 0 failures.
+- Two new permanent regression checks lock this in directly against
+  `REPOMAN_TEST_FORCE_NO_GOFMT`, not against whichever way a given
+  host happens to be configured -- the exact gap that let this ship
+  in 0.13.0 in the first place.
+- Selftest count: 133 -> 135.
+
 ## [0.13.0] - 2026-08-28
 
 - **A missing Go toolchain no longer fails the acceptance gate.**

@@ -77,8 +77,13 @@ func runSection16(g *gate, root string) int {
 	// search == replace: a genuine no-op. Must succeed (the content
 	// genuinely is what was asked for), but must not rewrite the file
 	// on disk just to write identical bytes back -- confirmed by an
-	// empty "written" list, not merely a successful exit code.
-	noop := fmt.Sprintf(`{"v":1,"ops":[{"op":"sub","file":"t.go","search_b64":%q,"replace_b64":%q,"expect":1,"roles":["go-code"]}]}`,
+	// empty "written" list, not merely a successful exit code. Not a
+	// syntax-verification test -- explicitly disabled so this stays
+	// true regardless of whether gofmt happens to be on PATH (a real,
+	// confirmed gap: this used to fail in a genuinely toolchain-free
+	// environment for a reason entirely unrelated to what it claims to
+	// test).
+	noop := fmt.Sprintf(`{"v":1,"ops":[{"op":"sub","file":"t.go","search_b64":%q,"replace_b64":%q,"expect":1,"roles":["go-code"],"syntax_check":false}]}`,
 		b64s("package main"), b64s("package main"))
 	r = applyPayload(noop)
 	if !g.check(r.code == 0 && strings.Contains(r.stdout, `"written": []`),
