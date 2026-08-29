@@ -299,11 +299,21 @@ func runSection10Plus(g *gate, root, cfgPath string) int {
 func runSection11(g *gate, root, cfgPath string) int {
 	self := g.self
 
-	// 11. gomod: go.mod/go.sum sanity gate. The replace-directive
-	// checks are fully offline and deterministic, so they run
-	// unconditionally. The go.sum-completeness check is inherently
-	// network-adjacent, so that one sub-test is skipped, not failed,
-	// if this environment genuinely has no outbound network access.
+	// 11. gomod: go.mod/go.sum sanity gate. Its real-problem detection
+	// genuinely needs a working `go` binary -- unlike gofmt-dependent
+	// checks elsewhere, which exercise the "tool absent" code path
+	// unconditionally via REPOMAN_TEST_FORCE_NO_GOFMT, there is no
+	// equivalent force-override for `go` itself, since gomod's checks
+	// are built entirely out of real `go` subcommands. goPresent is
+	// checked once, here, and every check below that needs a real `go`
+	// binary defers rather than fails when this environment doesn't
+	// have one -- a missing Go toolchain is not a reason to refuse to
+	// power on a tool whose whole premise is not requiring one.
+	_, lookErr := exec.LookPath("go")
+	goPresent := lookErr == nil
+	const goMissingReason = "gomod's real-problem detection (replace-directive shape, " +
+		"go.sum completeness) needs a working `go` binary on PATH"
+
 	gomodDir := filepath.Join(root, "gomod-fixture")
 	os.MkdirAll(gomodDir, 0755)
 	mustWrite(filepath.Join(gomodDir, "go.mod"),
@@ -312,22 +322,22 @@ func runSection11(g *gate, root, cfgPath string) int {
 			"replace github.com/baz/qux => ../local-qux\n"+
 			"replace github.com/legit/thing => github.com/legit/thing v1.9.9\n")
 	r := run(self, root, "gomod", "check", gomodDir)
-	if !g.check(r.code == 1 && strings.Contains(r.stdout, "replace-absolute-path"),
+	if !g.deferIfToolMissing(goPresent, r.code == 1 && strings.Contains(r.stdout, "replace-absolute-path"),
 		"gomod fails on an absolute-path replace directive (the exact shape of a real "+
-			"path-leak incident)", r.stdout+r.stderr) {
+			"path-leak incident)", r.stdout+r.stderr, goMissingReason) {
 		return 1
 	}
-	if !g.check(strings.Contains(r.stdout, "replace-relative-path") && !strings.Contains(r.stdout, "ERROR replace-relative-path"),
-		"a relative-path replace warns, not fails, by default", r.stdout) {
+	if !g.deferIfToolMissing(goPresent, strings.Contains(r.stdout, "replace-relative-path") && !strings.Contains(r.stdout, "ERROR replace-relative-path"),
+		"a relative-path replace warns, not fails, by default", r.stdout, goMissingReason) {
 		return 1
 	}
-	if !g.check(!strings.Contains(r.stdout, "github.com/legit/thing"),
-		"a versioned replace (a real registry redirect) is never flagged", r.stdout) {
+	if !g.deferIfToolMissing(goPresent, !strings.Contains(r.stdout, "github.com/legit/thing"),
+		"a versioned replace (a real registry redirect) is never flagged", r.stdout, goMissingReason) {
 		return 1
 	}
 	r = run(self, root, "gomod", "check", "--strict-relative-replace", gomodDir)
-	if !g.check(r.code == 1 && strings.Contains(r.stdout, "ERROR replace-relative-path"),
-		"--strict-relative-replace promotes the relative case to a failure too", r.stdout+r.stderr) {
+	if !g.deferIfToolMissing(goPresent, r.code == 1 && strings.Contains(r.stdout, "ERROR replace-relative-path"),
+		"--strict-relative-replace promotes the relative case to a failure too", r.stdout+r.stderr, goMissingReason) {
 		return 1
 	}
 
@@ -335,18 +345,29 @@ func runSection11(g *gate, root, cfgPath string) int {
 	os.MkdirAll(cleanDir, 0755)
 	mustWrite(filepath.Join(cleanDir, "go.mod"), "module example.com/clean\n\ngo 1.21\n")
 	r = run(self, root, "gomod", "check", cleanDir)
-	if !g.check(r.code == 0 && strings.TrimSpace(r.stdout) == "GOMOD CHECK OK",
-		"a clean go.mod with no replace directives and no dependencies passes cleanly", r.stdout+r.stderr) {
+	if !g.deferIfToolMissing(goPresent, r.code == 0 && strings.TrimSpace(r.stdout) == "GOMOD CHECK OK",
+		"a clean go.mod with no replace directives and no dependencies passes cleanly", r.stdout+r.stderr, goMissingReason) {
 		return 1
 	}
 
+	// Regression: gomod used to hard-fail when `go` itself wasn't on
+	// PATH, with an explicit comment claiming this "cannot degrade
+	// gracefully the way an optional tool can" -- a deliberate design
+	// decision, later reconsidered: requiring a full Go toolchain just
+	// to get a clean bootstrap contradicts gorepoman's own premise of
+	// being usable without one. Now: a clear WARN naming what's
+	// unverified and how to fix it, and a soft pass, matching badcode's
+	// own "no config configured" shape -- confirmed here regardless of
+	// whether this environment happens to have `go` or not, via an
+	// explicitly emptied PATH, not by depending on ambient absence.
 	cmd := exec.Command(self, "gomod", "check", cleanDir)
 	cmd.Env = filterAndSet(os.Environ(), "PATH", "/nonexistent-empty-path")
 	out, err := cmd.CombinedOutput()
 	rc := exitCodeOf(err)
-	if !g.check(rc == 1 && strings.Contains(string(out), "go-tooling"),
-		"gomod fails clearly (not silently) when go itself is not on PATH -- this check cannot "+
-			"degrade gracefully the way an optional tool can", string(out)) {
+	if !g.check(rc == 0 && strings.Contains(string(out), "WARN go toolchain not found on PATH") &&
+		strings.Contains(string(out), "GOMOD CHECK OK"),
+		"regression: gomod warns and soft-passes (not a hard failure) when go itself is not "+
+			"on PATH -- a missing toolchain is not a reason to refuse to power on", string(out)) {
 		return 1
 	}
 

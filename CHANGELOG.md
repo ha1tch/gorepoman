@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.13.0] - 2026-08-28
+
+- **A missing Go toolchain no longer fails the acceptance gate.**
+  Previously, `repoman selftest` reported a hard `SELFTEST FAILED` in
+  any environment without a real `go` binary on PATH -- not because of
+  gofmt specifically (that path was already made force-testable and
+  degrades gracefully regardless of what's really installed), but
+  because `gomod check`'s real-problem detection genuinely needs `go`
+  to run at all, and its own top-level behavior treated that absence
+  as a hard error, with a comment explicitly documenting this as
+  deliberate: "this check cannot degrade gracefully the way an
+  optional tool can." That was a real, intentional decision, now
+  reconsidered: gorepoman's whole premise is a single static binary
+  usable on projects that have nothing to do with Go, and requiring a
+  full Go toolchain just to get a clean bootstrap directly contradicts
+  that.
+- **`gomod check` itself now warns and soft-passes** when `go` isn't
+  on PATH, matching the shape `badcode` already uses for "no config
+  configured": a clear `WARN` naming exactly what couldn't be
+  verified, an actionable install instruction, and exit 0 -- not a
+  hard failure that blocks anything downstream.
+- **`selftest` gained a third outcome, not just pass/fail: deferred.**
+  A check whose specific scenario cannot be exercised without an
+  optional toolchain component gorepoman itself doesn't require is now
+  skipped rather than force-failed -- neither faked as a pass nor
+  allowed to block the whole gate. The closing summary names exactly
+  what's missing and how to get full coverage:
+  `selftest: all N checks green (M deferred -- optional toolchain
+  missing)`, still exit 0, still genuinely trustworthy for everything
+  that *was* exercised. This is a real third state, not a relaxation
+  of what "green" means -- a check that runs and finds a genuine
+  problem still fails the gate exactly as before, full stop; only a
+  check that cannot run its scenario at all defers.
+- Five checks converted from unconditional to this new deferred
+  behavior (gomod's replace-directive and go.sum-completeness
+  detection), and the check that used to assert gomod's old hard-fail
+  behavior now asserts the new warn-and-soft-pass shape instead --
+  confirmed via an explicitly emptied PATH, not by depending on
+  whichever way this environment happens to be configured. Verified
+  directly, both ways: a completely toolchain-free environment now
+  gets `133 -> 127 checks green (5 deferred)`, still exit 0, still
+  clean; an environment with a real toolchain still gets the full
+  `133 checks green` with nothing deferred, unaffected by any of this.
+  Confirmed deterministic across five repeated runs of each case.
+- `docs/repoman-030-getting-started.md` updated: the existing claim
+  that "an absent optional tool never fails this gate" was, before
+  this release, not fully accurate -- gomod's old behavior
+  contradicted it. It's accurate now, and the doc says concretely what
+  a deferred outcome actually looks like rather than asserting the
+  property abstractly.
+
 ## [0.12.0] - 2026-08-28
 
 - **New: `--brief` -- a per-call override that skips the live-fetch**

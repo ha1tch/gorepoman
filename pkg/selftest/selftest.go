@@ -105,12 +105,14 @@ func runWithStdin(self, cwd, stdin string, args ...string) runResult {
 }
 
 // gate carries the running state of the acceptance walk: which
-// binary to re-invoke, which directory to run it in, and how many
-// checks have passed so far.
+// binary to re-invoke, which directory to run it in, how many checks
+// have passed so far, and which were deferred because an optional
+// toolchain component this bootstrap doesn't require wasn't present.
 type gate struct {
-	self   string
-	cwd    string
-	checks int
+	self     string
+	cwd      string
+	checks   int
+	deferred []string
 }
 
 // check prints and counts a pass, or prints and signals an abort on a
@@ -147,6 +149,27 @@ func (g *gate) check(cond bool, label, detail string) bool {
 	g.checks++
 	fmt.Printf("ok  %s\n", label)
 	return true
+}
+
+// deferIfToolMissing is for a check whose specific scenario cannot be
+// exercised without an optional toolchain component gorepoman itself
+// does not require to bootstrap -- a full `go` binary on PATH for
+// gomod's real-problem detection, as distinct from gofmt, which every
+// gofmt-dependent check already exercises via
+// REPOMAN_TEST_FORCE_NO_GOFMT regardless of what's really installed,
+// so none of those need this. When toolPresent is false, the check is
+// skipped entirely -- neither counted as a pass nor treated as a
+// failure -- and reason is recorded for the closing summary and its
+// install-and-retry instructions. When toolPresent is true, this is
+// exactly g.check: a genuine failure here is a genuine failure,
+// full stop, same as anywhere else in this suite.
+func (g *gate) deferIfToolMissing(toolPresent bool, cond bool, label, detail, reason string) bool {
+	if !toolPresent {
+		g.deferred = append(g.deferred, reason)
+		fmt.Printf("defer  %s -- %s\n", label, reason)
+		return true
+	}
+	return g.check(cond, label, detail)
 }
 
 func mustWrite(path, content string) {

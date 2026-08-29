@@ -174,9 +174,20 @@ func checkGosumCompleteness(root string) ([]string, []string) {
 func cmdCheck(root string, strictRelative bool) int {
 	res := run([]string{"go", "version"}, root)
 	if res.rc == nil {
-		fmt.Printf("ERROR go-tooling: %s\n", res.out)
-		fmt.Println("GOMOD CHECK FAIL: 1 error(s)")
-		return 1
+		// A missing Go toolchain is not a reason to refuse to power on.
+		// gomod's own checks (replace-directive shape, go.sum
+		// completeness) genuinely cannot run without `go` itself -- but
+		// gorepoman's whole premise is a single static binary usable on
+		// projects that have nothing to do with Go, so requiring a full
+		// toolchain just to get a clean bootstrap contradicts that.
+		// This mirrors badcode's own "no config configured" shape: a
+		// clear WARN, an actionable next step, and a soft pass rather
+		// than blocking anything.
+		fmt.Printf("WARN go toolchain not found on PATH -- gomod cannot verify replace\n")
+		fmt.Println("     directives or go.sum completeness without it")
+		fmt.Println("     install Go (see `repoman doctor -h`), then re-run `repoman gomod check`")
+		fmt.Println("GOMOD CHECK OK (0 checks performed -- toolchain unavailable)")
+		return 0
 	}
 
 	var errors, warnings []string

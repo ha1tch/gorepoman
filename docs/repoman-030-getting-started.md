@@ -72,6 +72,17 @@ own embedded selftest, `roles`, `syncver`, `register`, `guards`, wave
 tracking, `relcore`, and a final section targeting specific real bugs found
 in this project's own history rather than speculative edge cases.
 
+Concretely: a genuinely missing optional toolchain component (a full `go`
+binary, needed for `gomod`'s real-problem detection specifically — gofmt
+itself is checked unconditionally regardless of what's really installed)
+doesn't turn the gate red. It shows up as `selftest: all N checks green
+(M deferred — optional toolchain missing)`, still exit 0, with exactly
+what to install and a reminder to re-run for full coverage. Deferred is
+not a weaker kind of pass — those specific checks genuinely couldn't run
+their scenario without the tool, so they're skipped rather than either
+faked or allowed to block a gate gorepoman's whole premise says shouldn't
+need a toolchain to clear in the first place.
+
 **Do not trust an installation whose `selftest` fails.** A red gate means
 something in this environment doesn't match what the tools assume — fall
 back to plain, careful manual editing rather than trusting `ed`/
