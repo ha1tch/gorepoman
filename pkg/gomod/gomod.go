@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ha1tch/gorepoman/pkg/report"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
@@ -239,10 +240,11 @@ func Run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] != "check" {
-		fmt.Fprintln(os.Stderr, "Usage: repoman gomod check [path] [--strict-relative-replace]")
+		fmt.Fprintln(os.Stderr, "Usage: repoman gomod check [path] [--strict-relative-replace] [--format text|json|html]")
 		return 1
 	}
-	for _, a := range args[1:] {
+	format, rest := report.ExtractFormat(args[1:])
+	for _, a := range rest {
 		if a == "-h" || a == "--help" {
 			fmt.Println("usage: repoman gomod check [-h] [--strict-relative-replace] [path]")
 			fmt.Println()
@@ -263,7 +265,7 @@ func Run(args []string) int {
 	}
 	path := "."
 	strictRelative := false
-	for _, a := range args[1:] {
+	for _, a := range rest {
 		if a == "--strict-relative-replace" {
 			strictRelative = true
 		} else {
@@ -275,5 +277,40 @@ func Run(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	return cmdCheck(abs, strictRelative)
+	switch format {
+	case "text":
+		return cmdCheck(abs, strictRelative)
+	case "json":
+		result := computeCheck(abs, strictRelative)
+		if err := Validate(result); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		if err := report.EmitJSON(os.Stdout, "gomod", "gomod-check", SchemaVersion, result); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		if !result.OK {
+			return 1
+		}
+		return 0
+	case "html":
+		result := computeCheck(abs, strictRelative)
+		body, err := renderCheckHTML(result)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		if err := report.EmitHTML(os.Stdout, "gomod check", "gomod", "gomod-check", body); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		if !result.OK {
+			return 1
+		}
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+		return 1
+	}
 }

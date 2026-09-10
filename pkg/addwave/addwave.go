@@ -78,6 +78,7 @@ import (
 	"time"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/register"
 	"github.com/ha1tch/gorepoman/pkg/waveprogress"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
@@ -563,6 +564,28 @@ func Run(argv []string) int {
 	if err := insertDefaultVisibility(root, cfg, waveNum); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
+	}
+
+	// T-06: write the wave number back onto each linked register item
+	// as a real, queryable Wave field -- this is the moment the number
+	// is known and the link is being made, so it belongs here rather
+	// than as something someone remembers to add by hand later.
+	//
+	// Best-effort, never fatal: register_item is a forward reference by
+	// contract (the help text says an item can be linked to one filed
+	// later, and the selftest fixture relies on exactly that), so a
+	// link with no register entry behind it yet is normal, not an
+	// error. And the wave has already been written by this point --
+	// failing the whole command now would leave a half-updated state,
+	// the exact B-05 class of problem. A warning names what was
+	// skipped so it can be filled in once the item exists.
+	for _, it := range items {
+		if it.RegisterItem == "" {
+			continue
+		}
+		if err := register.SetItemWave(root, &cfg, it.RegisterItem, strconv.Itoa(waveNum)); err != nil {
+			fmt.Fprintf(os.Stderr, "note: %s not marked with Wave: %d (%v) -- add it by hand once the item exists\n", it.RegisterItem, waveNum, err)
+		}
 	}
 
 	rc := waveprogress.Run(nil)

@@ -1,5 +1,387 @@
 # Changelog
 
+## [0.14.7] - 2026-09-09
+
+Patch release: three provenance/board fixes, code-complete and tested
+in the prior session, now closed and shipped.
+
+- **Fix: `board --definition ... --format json` failed validation on
+  every axis** (`data.legend: field cannot be null`, T-30).
+  `DefinitionReport.Legend` lacked `omitempty`, so an unset legend
+  marshaled to JSON `null`, which queryfy's strict-mode schema
+  rejected even without `.Required()`. Normalized to an empty slice at
+  both construction sites (`RenderDefinition`, `renderDependencyOrder`
+  in `pkg/board/definition.go`). New `--format json` regression check
+  in `section26.go`.
+- **New: `relcore` provenance pre-flight** (T-03). Runs unconditionally
+  alongside `badcode`, before any `release.steps` entry, including on
+  `--resume` -- an unsanctioned out-of-band edit to a journal-tracked
+  file blocks the release the same way a `badcode` hit does, with
+  `provenance sanction` as the only way through. New `section28.go`
+  regression coverage mirroring `section13.go`'s existing
+  badcode/relcore integration pattern.
+- **New: badcode matches annotated with provenance status** (T-04).
+  Each reported match now carries `[repoman]` (current content matches
+  repoman's own journal record), `[no provenance record]` (never
+  touched by repoman), or `[stale provenance record]` (tracked once,
+  since diverged) -- a distinction no adjacent secret-scanning tool can
+  make, since none of them own the editing layer. New coverage in
+  `section12.go` for all three labels.
+- **Selftest: 188 to 203 paths.** No regressions; register still 22
+  open items.
+
+## [0.14.6] - 2026-09-09
+
+New `ed` verbs -- `append`, `prepend`, `insert` -- and a matching
+selftest expansion (9 to 19 paths). Closes the anchor-duplication bug
+class that came up repeatedly this session when a hand-composed
+`--with` replacement restated part of a matched span instead of
+containing only new content: these three verbs never touch the
+matched span at all.
+
+- **New: `ed append`/`ed prepend`.** No handle needed -- write to true
+  EOF or true offset 0 respectively, reusing the same journal record
+  as `apply`/`sub` so `undo` restores exactly. Refuses a missing file
+  rather than creating one.
+- **New: `ed insert HANDLE --after|--before --with TEXT`.** Requires a
+  `find`-verified handle, same staleness check as `apply`. Splices at
+  the start or end of the matched span's byte range without ever
+  replacing the span itself, so the matched text always survives
+  verbatim in the result. `--after` and `--before` are mutually
+  exclusive and exactly one is required.
+- **Selftest: 9 to 19 paths.** Paths 10-14 cover append/prepend
+  (true-EOF/true-offset-0 writes, exact undo, missing-file refusal);
+  paths 15-19 cover insert (`--after`/`--before` placement with the
+  matched span left untouched, exact undo, stale-handle refusal,
+  mutual-exclusivity refusal). The top-level acceptance gate's
+  hardcoded `"9 paths green"` match (which would have silently
+  stopped verifying anything real the moment this count changed) is
+  now the count-agnostic `"paths green"`.
+
+- **New: `axis: dependency_order` on `board --definition`, previously
+  rejected outright** (see 0.14.2). Parses the register's free-text
+  `Blocks/after` field into real graph edges (`pkg/register/graph.go`)
+  with three-color-DFS cycle detection; tier(item) = 1 + max(tier of
+  each open blocker), 0 for anything unblocked. A blocker that is
+  closed (not present in the open-items graph at all) does not hold
+  its dependent back -- it is treated as already resolved, the same
+  rule a person applying this by hand would use. A real cycle (including
+  a one-item self-loop) refuses with the concrete path named, not a
+  crash, an infinite loop, or a silently wrong tier. Column mapping
+  follows dependency_order's own documented rule (`position IS the
+  value: column i collects tier i`): explicit columns narrower than
+  the tiers actually present send the overflow to Overflow, exactly as
+  every other axis's overflow behaves; no explicit columns auto-derives
+  one per tier present. 7 new selftest checks.
+- **New: `repoman provenance check`.** sha256-journal-based detection
+  of a journal-tracked file edited OUTSIDE repoman -- raw str_replace,
+  sed, hand-editing, or an agent reaching for a generic editing tool
+  instead of repoman's own (the real incident that motivated this).
+  `ed`'s `Journal` gains a `file_provenance` map recording the sha256
+  of a file's full content at every repoman-mediated write, updated by
+  the same `Record` funnel `ed` and `strreplace` both already share,
+  plus `undo`'s own write path. `provenance check` recomputes and
+  compares; a mismatch or a missing tracked file is reported as an
+  actionable, exit-1 error. v1 scope: journal-tracked files only, no
+  git integration.
+- **New: `ed`'s own write paths (`apply`, `insert`, `sub`,
+  `append`/`prepend`, `undo`) and `strreplace`'s single read funnel now
+  refuse to write on top of a provenance mismatch**, instead of only
+  catching it later on an on-demand check. This closed a real gap
+  `apply`'s `SpanHash` staleness check alone could not: a fresh
+  `find`/`apply` handle taken on already-tampered content matches that
+  tampered content just fine, so `SpanHash` never fires -- provenance
+  checks against the last *repoman-recorded* state instead, catching
+  exactly what span-freshness structurally can't. `sub` had no
+  staleness check at all before this (`--expect` only ever guarded
+  occurrence count); `append`/`prepend` had none by design, targeting a
+  file boundary rather than matched text.
+- **New: `repoman provenance sanction <file> --reason "..."`.**
+  Gating every write path on provenance immediately closed the only
+  documented v1 recovery path too -- redoing the edit through repoman
+  to re-sync the hash is itself a write, so it was being refused by
+  the very mechanism it was supposed to satisfy. `sanction` resolves
+  this directly: re-syncs the recorded hash to current on-disk content
+  without requiring the edit to be redone. `--reason` is mandatory
+  (this is a deliberate override of a safety check, and the audit
+  trail is the point) and is recorded alongside the hash. Refuses on a
+  path with no mismatch on record (not a silent no-op) and on a path
+  that no longer exists (nothing to certify -- restore it first).
+- **Selftest: 170 to 188 checks**, covering dependency_order tiering,
+  provenance check/mismatch/missing/undo-resync, every write path's
+  new refusal and its post-sanction recovery (`apply`, `sub`,
+  `append`, `strreplace`), and sanction's own refusal edge cases.
+  Every scenario was hand-verified live against the real binary before
+  being written as a regression.
+
+T-20 and T-21 (see docs/TRACKING.md) are implemented and tested by
+this release but held open at status ☑,
+pending further real usage before formal closure.
+
+## [0.14.5] - 2026-09-08
+
+Fixes B-10 (see gorepoman-bugs.md): a register with a second,
+permanently live id namespace -- the real, reported case being
+poesy's `T-nn` for general debt alongside `BF-nn` for bugfixes, both
+open at once, neither ever retired -- was silently invisible to
+`register check` and `register list`, undercounting open items with
+no warning at all. Parsing only ever recognised the primary namespace
+plus one optional `legacy_id_prefix` fallback meant for a one-time
+id-shape migration (old shape retired, new shape forward-only, both
+sharing a single counter), not two shapes coexisting indefinitely.
+
+- **New: `id_namespaces` config key.** Any number of additional id
+  prefixes, each with its own independent `NextID` counter -- distinct
+  from `legacy_id_prefix`, which still folds into the primary
+  namespace's counter exactly as before (verified: a project mid-
+  migration on the old mechanism sees no behaviour change at all).
+  `register add --id-prefix BF ...` allocates from a configured
+  namespace; an unconfigured `--id-prefix` is refused with an
+  actionable message naming the namespaces that do exist, rather than
+  silently accepted or silently defaulted to the primary one.
+- **Fix: `register check`/`list` recognise every configured**
+  **namespace**, not just the primary and legacy ones -- the actual
+  B-10 fix. Both the text and json output paths now go through the
+  same `sortedTIDs` helper (the text path had its own separate inline
+  sort before this, a latent drift risk report.go's own comment
+  already warned about without actually closing).
+- **Fix: deterministic list ordering across namespaces.** Two ids from
+  different namespaces can share the same numeric part (`T-01` and
+  `BF-01` both parse to `Num=1`); relying on a plain numeric sort left
+  their relative order to Go's unordered map iteration. Listing now
+  sorts by counter group first, then number, with `sort.SliceStable`.
+- **Fix: `waveprogress` recognises every configured namespace too**,
+  for the same reason and via the same `id_namespaces` config, keeping
+  it consistent with `register` on the one document both read.
+- Docs: `repoman-090-configuration.md` documents `id_namespaces`
+  alongside `legacy_id_prefix`, including when to reach for one over
+  the other.
+
+## [0.14.4] - 2026-09-08
+
+Closes T-06 and T-14 (see RESOLVED.md). Both are the same shape:
+one new optional segment on a register item own field line, exposed
+as real queryable data, deliberately not a new table column -- that
+would have been a breaking format change to every register anywhere.
+An item without either segment parses exactly as before.
+
+- **New: Wave as a queryable register field (T-06).** `Theme: X ·
+  Priority: P · Status: S · Wave: N`. Set with `register add --wave N`,
+  and written back automatically by `addwave` onto every item it
+  links via register_item -- the moment the wave number is known and
+  the link is being made, not a hand step afterward. Best-effort by
+  contract: register_item is a forward reference (an item can be
+  linked to one filed later, and the selftest fixture relies on
+  exactly that), so a link with no entry behind it warns and
+  continues rather than failing after the wave has already been
+  written. Exposed as `wave` in `register list --format json`, the
+  kanban view, and `board`.
+- **New: Filed-by as a queryable register field (T-14).** `· Filed-by:
+  <project>:<prefix>-<n>` names the originating cross-project issue an
+  item was minted from. `register add --filed-by` validates the form
+  and stores it bare; a leading `issue/` (the standalone-reference
+  form) is tolerated and stripped rather than rejected. Exposed as
+  `filed_by` in json.
+- **Fix, caught before it shipped:** the field-line rewriter that
+  addwave uses to set Wave rebuilt the line from only the segments it
+  knew about, and would have silently dropped a Filed-by segment
+  while rewriting Wave. Both parsers now capture and re-emit every
+  optional segment; verified that rewriting Wave on an item carrying
+  both Filed-by and Blocks/after preserves both, in canonical order.
+- Two more real, non-fixture uses of the T-19 propagation from
+  0.14.3: closing T-06 and T-14 each updated their own
+  WAVE_TRACKING.md row and regenerated wave progress automatically.
+
+## [0.14.3] - 2026-09-08
+
+Closes T-07, T-13, and T-19 (see RESOLVED.md). Two of the three
+fixes below were found only because a direct question -- are all the
+issues you found actually resolved correctly -- forced a real
+re-check of work already reported as verified.
+
+- **New: `repoman register list --view kanban`.** A single-project,
+  status-grouped view of the register: five fixed columns, always
+  shown even at zero, no external definition needed. Every item
+  always has exactly one of the five known statuses, so unlike a
+  workspace board there is no Overflow case to handle. Takes --format
+  like every other reporting subcommand.
+- **New: `repoman workspace newissue / resolveissue / pauseissue /**
+  **dropissue`.** The issue lifecycle, reusing the same clone/commit/
+  push pattern join and leave already use. Pause is non-terminal (the
+  issue stays open and unmoved; an event is appended to
+  issues/paused.jsonl). Drop is terminal and requires --reason --
+  moved to issues/dropped.jsonl, never silently deleted, the same
+  principle as register close moving an item to RESOLVED.md rather
+  than erasing it. A project name given at join time is now stored
+  locally (config.Workspace.project_name) and reused by newissue, so
+  a project cannot register under one identity and file issues under
+  another by accident.
+- **Fix: issue ids are never reused.** The first version of the
+  next-id logic only scanned the open issues directory; a resolved or
+  dropped issue own file is deleted from there, so its number looked
+  available again and a later issue could have collided with a real,
+  closed one. The first attempted fix shipped with a regex matching
+  the wrong JSON field name and silently did nothing -- caught by
+  re-running the identical scenario on an independent fresh
+  workspace rather than trusting a test that had passed once. The
+  real fix parses each log line as JSON instead of pattern-matching
+  raw text. Verified: resolve-then-file, drop-then-file, and two
+  different filers keeping independent sequences.
+- **Fix (T-19): `register close` now propagates to a linked wave**
+  **row.** Closing an item a wave table referenced left that row own
+  checkbox untouched, so TRACKING.md and WAVE_TRACKING.md drifted on
+  every closure -- hand-patched three separate times this week before
+  being filed. Now the same operation: close finds any wave row whose
+  register_item column exactly matches the closed id (whole-cell
+  match, so T-1 never hits T-10), marks it done, and regenerates wave
+  progress in the same step. A repository with no wave tracking
+  closes exactly as before.
+
+## [0.14.2] - 2026-09-07
+
+Cross-project workspace membership, plus a real board-definition
+mechanism resolving the design work from several sessions this week.
+Closes T-09 through T-12 (see RESOLVED.md for full detail).
+
+- **New: `repoman workspace join/leave/list`.** join and leave write
+  to two repos with two different credentials each time -- the local
+  project own .repoman.json (a new workspaces key: name, remote,
+  credential_env), and the workspace own participants.json (an
+  ordinary git clone/commit/push, no gorepoman-specific credential
+  handling at all; read access to a workspace is free, write access
+  is whatever GitHub permissions already grant). list is read-only
+  and takes --format like every other reporting subcommand. Tested
+  end to end against a real local git remote, with every write
+  independently confirmed via a fresh clone after the operation, not
+  just trusted from local state.
+- **New: `repoman board --definition FILE`.** A board definition
+  (schema `gorepoman.workspace.board/1`) lives in a workspace repo as
+  an opt-in layer -- the plain, no-workspace `repoman board` stays the
+  free default, nothing required to join anything just to render a
+  cross-project status view. A definition carries a title, an
+  optional hand-authored markdown subtitle and footer, a scope
+  (narrowing to a project subset), an axis (status, priority, theme,
+  or dependency_order), columns, an Overflow bucket, and a legend of
+  named, coloured per-card notes (a palette kept deliberately distinct
+  from colours that already carry fixed meaning elsewhere -- green for
+  done, amber for partial, grey for not started).
+- **Column value mapping, the piece that made rendering possible.**
+  A column may name explicit `values` it collects (letting several
+  underlying values merge into one column); when a status or priority
+  column omits values, it falls back to that axis own natural order
+  by position; theme has no natural order, so a theme column must
+  name its values explicitly -- enforced at validation time, not
+  discovered at render time. Anything matching no column lands in
+  Overflow rather than disappearing. When a definition supplies no
+  columns at all, one column is auto-derived per value actually
+  present in the data (not per every possible natural-order value
+  regardless of use -- an early version of this got that wrong and
+  produced empty columns for values nothing in the data ever used;
+  fixed before release).
+- **axis: dependency_order is explicitly rejected for now**, with a
+  message naming exactly what it needs (parsed Blocks/after edges and
+  wave membership as real fields) rather than silently producing a
+  wrong or empty board.
+- Seven new tests (`pkg/workspace/schema_test.go`) cover the
+  validation rules above; all green. One caught a genuine bug before
+  it shipped: an unset optional array field marshals to JSON `null`,
+  not absent, and queryfy correctly rejects `null` even on an
+  optional field -- fixed with `omitempty` throughout the affected
+  structs.
+
+## [0.14.1] - 2026-09-07
+
+Nine issues found through real use against poesy (see gorepoman-bugs.md),
+fixed and verified against a reproduction of each reported failure, not
+just against the bug description:
+
+- **Fix (`ed`): `find`/`sub` no longer swallow a flag placed before its**
+  **positionals.** `ed find --regex PAT file` used to search for the
+  literal string `"--regex"`; `ed sub --expect 1 OLD NEW file` used to
+  take `"--expect"` as OLD and `"1"` as NEW, find zero real occurrences,
+  and since `--expect` was then never actually parsed, `0 == 0` passed
+  as success -- a silent no-op reported as a clean run. `--expect` and
+  `--force-roles` are now recognised anywhere in the arguments, and a
+  missing `--expect` is now an explicit refusal regardless of what the
+  occurrence count happens to be.
+- **Fix (`ed`): `apply` given a bare hash** (the trailing segment of a
+  handle, copied on its own) **now says so specifically**, instead of
+  the same generic "malformed handle" used for every other mistake.
+- **Fix (`register close`): the first closure ever made in a**
+  **repository no longer fails.** A `RESOLVED.md` with only header
+  prose and no `## ` entry yet used to be refused outright, since there
+  was nothing for the insertion regex to anchor on -- it now appends
+  after the existing prose instead.
+- **Fix (`register close`): closing the last item of a theme no longer**
+  **leaves the theme heading behind as an orphan** when it is also the
+  last theme in the file -- the emptied-heading pattern only matched
+  "followed by another heading" or "followed by the closing rule", not
+  "followed by nothing, because this was the end of the document."
+- **New: a fifth register status, `☑`** ("implementation complete and
+  tested, deliberately held open pending a batched release"), distinct
+  from `✓`. `A1` already only matched the literal `✓` codepoint, so it
+  needed no change; `A3` and the `--status` validation in `register add`
+  now accept `☑` as the fifth known symbol.
+- **Fix (`waveprogress`): the per-wave `**Wave N: k/n, status.**`**
+  **summary line is now regenerated**, not just the "Progress at a
+  glance" section above it -- previously `addwave` wrote it once, when
+  the wave was created, and nothing ever recomputed it, so a fully-done
+  wave could still read "0/4, not started" indefinitely.
+- **Fix (`waveprogress`/`addwave`): a fresh, unseeded wave-tracking**
+  **document no longer fails.** The "## 1. Progress at a glance" fenced
+  block is now self-healed (inserted) when entirely absent, rather than
+  refusing -- which previously left the writes already made by `addwave`
+  (the new wave table, plan paragraph, short name) sitting half-updated,
+  since the failure happened only on this later, separate check.
+- **Fix (config): a `version_targets` entry with the wrong field name**
+  (`"pattern"` instead of `"match"`) **is now rejected explicitly at**
+  **config-load time**, instead of silently leaving the regex empty and
+  surfacing later as `syncver show` reporting `<no match>` -- which
+  reads as a content mismatch, not the config error it actually is.
+- **Fix (`guards`): a guard recorded as `never — written DATE` is no**
+  **longer treated as exercised on that date.** The word "never" is now
+  authoritative regardless of any other date on the same line -- the
+  date was when the guard was added, not when it ran, and treating it
+  as an exercise record let `guards stale` go quiet on a guard that had
+  never actually been run.
+- **Confirmed non-issue:** `guards stale` with no `--since` on a
+  repository with no `CHANGELOG.md` at all -- a Python-era report,
+  unconfirmed on gorepoman -- degrades cleanly (falls back to the epoch
+  date) rather than reproducing the original traceback.
+
+## [0.14.0] - 2026-08-31
+
+- **Added `--format text|json|html` to every state-reporting subcommand**
+  **(`syncver show`/`check`, `gomod check`, `guards list`/`show`/`stale`,**
+  **`register list`/`show`/`check`, `waveprogress --show`/`--check`) --**
+  one flag, one meaning, everywhere it appears, replacing five
+  independently-invented output vocabularies. `text` is the existing
+  output, provably unchanged: every command's original printing code
+  path is left untouched and still called as-is for the default case,
+  not reimplemented alongside a format check. `json` is a uniform
+  envelope (`tool`, `object`, `schema_version`, `data`, `generated_at`),
+  validated against a real schema (`github.com/ha1tch/queryfy`) before
+  it's written -- the actual bytes about to ship, not just the Go
+  struct that produced them. `html` renders the same data as a
+  self-contained document (`html/template`, compiled in via
+  `embed.FS`, no external stylesheet or CDN dependency) in one shared
+  visual family across every command, deterministic run to run in a
+  way a live re-rendering from `json` never can be. See
+  `repoman-055-format.md`.
+- **`waveprogress --html PATH` is superseded by `--show --format html`**
+  (writes to stdout, same shape every other command's html output
+  uses) -- kept working, unchanged, not removed.
+- **New command: `board`.** Aggregates several local project
+  checkouts into one cross-project view by invoking this same binary's
+  own `register list --format json` and `waveprogress --show --format
+  json` against each directory and merging the results -- it owns no
+  parsing of its own. Local directories only, given as positional
+  arguments; no manifest file, no network fetch, and no merging of
+  cross-project workspace issues, since that mechanism doesn't exist
+  as running code yet. Always exits 0 on a normal run regardless of
+  what any individual project reports -- a status view, not a gate.
+  See `repoman-085-board.md`.
+
 ## [0.13.4] - 2026-08-28
 
 - **Fixed a real bug in 0.13.2's own regression test, caught by CI on**

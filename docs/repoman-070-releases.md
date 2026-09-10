@@ -25,6 +25,32 @@ version set to 0.2.0
 exact version directly; `check` verifies everything still agrees and exits
 non-zero if it doesn't — the check to wire into CI or a pre-release gate.
 
+`show` and `check` both take `--format` (`repoman-055-format.md`) for
+scripted consumption — a per-target breakdown, not just the flattened
+message the default text form shows:
+
+```
+$ repoman syncver show --format json
+{
+  "tool": "syncver",
+  "object": "syncver-status",
+  "schema_version": 1,
+  "data": {
+    "version": "1.4.2",
+    "in_sync": false,
+    "targets": [
+      {"file": "docs/README.md", "value": "1.4.0", "match": false}
+    ]
+  },
+  "generated_at": "2026-08-30T14:00:00Z"
+}
+```
+
+`check --format json`'s exit code carries the same meaning as the
+default text form's — non-zero when out of sync — so it drops into a CI
+step exactly like `check` always has, just with a real payload alongside
+the exit code instead of only a status line.
+
 ## `relcore`: a release is a sequence of steps, not one script
 
 `.repoman.json`'s `release.steps` list names each step as either a
@@ -114,6 +140,33 @@ Wire it into a project's own `relcore` steps as an ordinary `run` step:
 ```json
 {"name": "go-sanity", "run": "repoman gomod check", "always": true}
 ```
+
+`check --format json` (`repoman-055-format.md`) turns the same finding
+into a structured payload — `errors`/`warnings` as real arrays a CI
+system can act on individually, not lines to re-parse:
+
+```
+$ repoman gomod check --format json
+{
+  "tool": "gomod",
+  "object": "gomod-check",
+  "schema_version": 1,
+  "data": {
+    "toolchain_available": true,
+    "errors": [
+      "replace-absolute-path: `replace example.com/internal-lib => /home/dev/internal-lib` is an absolute local filesystem path -- it will not exist on any machine but the one that wrote it. Remove before release."
+    ],
+    "warnings": [],
+    "ok": false
+  },
+  "generated_at": "2026-08-30T14:00:00Z"
+}
+```
+
+The toolchain-unavailable soft-pass is visible in the payload too
+(`"toolchain_available": false`, `"ok": true`) rather than only as an
+absence of output — a consumer can tell "nothing to check here" apart
+from "checked, and it's clean" without re-deriving it from silence.
 
 ## Putting it together
 

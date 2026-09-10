@@ -1,0 +1,160 @@
+<title>gorepoman Dependency Board</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #F4F5F3;
+    --surface: #FFFFFF;
+    --surface-sunken: #ECEEEC;
+    --border: #DCDFDB;
+    --text-primary: #1C201E;
+    --text-secondary: #5B6360;
+    --text-muted: #8A9490;
+    --accent: #0E7C7B;
+    --accent-soft: #E3F1F0;
+    --good: #3D7A45;
+    --good-soft: #E7F1E5;
+    --wait: #8A6D1D;
+    --wait-soft: #F4EDD8;
+    --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181A;
+      --surface: #1B2023;
+      --surface-sunken: #171B1D;
+      --border: #2B3235;
+      --text-primary: #ECEFEE;
+      --text-secondary: #A9B2AF;
+      --text-muted: #79837F;
+      --accent: #3FBDB9;
+      --accent-soft: #16302F;
+      --good: #6FBF77;
+      --good-soft: #1E2E1E;
+      --wait: #D6B25A;
+      --wait-soft: #2F2814;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181A;
+    --surface: #1B2023;
+    --surface-sunken: #171B1D;
+    --border: #2B3235;
+    --text-primary: #ECEFEE;
+    --text-secondary: #A9B2AF;
+    --text-muted: #79837F;
+    --accent: #3FBDB9;
+    --accent-soft: #16302F;
+    --good: #6FBF77;
+    --good-soft: #1E2E1E;
+    --wait: #D6B25A;
+    --wait-soft: #2F2814;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text-primary); font-family: var(--font-sans); }
+
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
+
+  header { margin-bottom: 1.75rem; }
+  h1 { font-size: 22px; font-weight: 500; text-wrap: balance; margin: 0 0 0.35rem; }
+  .subtitle { font-size: 14px; color: var(--text-secondary); line-height: 1.6; max-width: 62ch; margin: 0; }
+  .subtitle code { font-family: var(--font-mono); font-size: 13px; background: var(--surface-sunken); padding: 1px 5px; border-radius: 4px; }
+
+  .stats { display: flex; gap: 1.5rem; margin-top: 1rem; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .n { font-family: var(--font-mono); font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .board { display: grid; grid-auto-flow: column; grid-auto-columns: 250px; gap: 14px; overflow-x: auto; padding-bottom: 0.5rem; }
+  @media (min-width: 1100px) { .board { grid-auto-columns: minmax(0, 1fr); grid-template-columns: repeat(4, minmax(0,1fr)); } }
+
+  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .col-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 2px 8px; border-bottom: 2px solid var(--border); }
+  .col-head h2 { font-size: 14px; font-weight: 500; margin: 0; }
+  .col-head .count { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+  .col-note { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; padding: 0 2px; margin-top: -4px; }
+
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 10px; padding: 12px 13px; display: flex; flex-direction: column; gap: 7px; }
+  .card.is-done { border-color: var(--good); }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .id { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--accent); }
+  .wave { font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); background: var(--surface-sunken); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .title { font-size: 13px; line-height: 1.45; color: var(--text-primary); }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .waits { font-size: 11px; font-family: var(--font-mono); color: var(--wait); background: var(--wait-soft); border-radius: 4px; padding: 3px 7px; display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
+  .waits::before { content: "→"; }
+  .ready-tag { font-size: 11px; font-family: var(--font-mono); color: var(--good); background: var(--good-soft); border-radius: 4px; padding: 3px 7px; display: inline-flex; align-self: flex-start; }
+  .unblocked-tag { font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary); background: var(--surface-sunken); border-radius: 4px; padding: 3px 7px; display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
+  .unblocked-tag::before { content: "\2713"; color: var(--good); }
+  .done-tag { font-size: 11px; font-family: var(--font-mono); color: var(--good); background: var(--good-soft); border-radius: 4px; padding: 3px 7px; display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
+  .done-tag::before { content: "\25D1"; }
+
+  footer { margin-top: 2rem; font-size: 12px; color: var(--text-muted); line-height: 1.7; border-top: 0.5px solid var(--border); padding-top: 1rem; }
+  footer code { font-family: var(--font-mono); }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<div class="wrap">
+  <header>
+    <h1>Dependency board — build order</h1>
+    <p class="subtitle">All 16 open items in the register, arranged by what actually blocks what rather than by wave number. Columns are build tiers, computed by hand from each item's <code>Blocks/after</code> field: an item can start once everything to its left is done. Tiering isn't automated yet in gorepoman itself &mdash; that's T-08, still open &mdash; so this board is a manual trace, not a generated one. Every card in a tier is unblocked; a checkmark tag says so explicitly even when a card has nothing further to unlock. Source: <code>docs/TRACKING.md</code>, 2026-09-09.</p>
+    <div class="stats">
+      <div class="stat"><span class="n">16</span><span class="l">open items</span></div>
+      <div class="stat"><span class="n">4</span><span class="l">build tiers</span></div>
+      <div class="stat"><span class="n">8</span><span class="l">ready to start</span></div>
+      <div class="stat"><span class="n">2</span><span class="l">code complete</span></div>
+      <div class="stat"><span class="n">4</span><span class="l">waves involved</span></div>
+    </div>
+  </header>
+
+  <div class="board">
+
+    <div class="col">
+      <div class="col-head"><h2>Now</h2><span class="count">10</span></div>
+      <p class="col-note">No unresolved dependency &mdash; only needs already-shipped work. Every card here is unblocked, whether or not it says "unlocks" something else.</p>
+
+      <div class="card"><div class="card-top"><span class="id">T-01</span><span class="wave">wave 1</span></div><div class="title">Provenance check: detect out-of-band edits to journal-tracked files</div><div class="tags"><span class="ready-tag">unlocks T-02, T-04</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-05</span><span class="wave">wave 2</span></div><div class="title">Parse Blocks/after into real graph edges, with cycle detection</div><div class="tags"><span class="unblocked-tag">unblocked, no dependents</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-08</span><span class="wave">wave 4</span></div><div class="title">Board: cross-project dependency-order tiering</div><div class="tags"><span class="unblocked-tag">unblocked, no dependents</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-15</span><span class="wave">wave 6</span></div><div class="title">relcore orchestrates GoReleaser as a resumable step</div><div class="tags"><span class="unblocked-tag">unblocked, no dependents</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-16</span><span class="wave">wave 6</span></div><div class="title">Canonical CI workflow: badcode + selftest as a required PR check</div><div class="tags"><span class="unblocked-tag">unblocked, no dependents</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-17</span><span class="wave">wave 6</span></div><div class="title">Roles backed by a real structural matcher (research spike)</div><div class="tags"><span class="unblocked-tag">unblocked, no dependents</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-18</span><span class="wave">wave 6</span></div><div class="title">Guards: distinguish never-rerun from code-moved-since</div><div class="tags"><span class="unblocked-tag">unblocked, no dependents</span></div></div>
+      <div class="card is-done"><div class="card-top"><span class="id">T-20</span><span class="wave">wave 7</span></div><div class="title">ed: append/prepend verbs, no handle required</div><div class="tags"><span class="done-tag">code complete, pending release</span></div></div>
+      <div class="card is-done"><div class="card-top"><span class="id">T-21</span><span class="wave">wave 7</span></div><div class="title">ed: insert verb, handle-verified positional insertion</div><div class="tags"><span class="done-tag">code complete, pending release</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-22</span><span class="wave">wave 7</span></div><div class="title">ed: pending-ticket storage design for niplines</div><div class="tags"><span class="ready-tag">unlocks T-23</span></div></div>
+    </div>
+
+    <div class="col">
+      <div class="col-head"><h2>Next</h2><span class="count">3</span></div>
+      <p class="col-note">Depends only on items already in Now.</p>
+
+      <div class="card"><div class="card-top"><span class="id">T-02</span><span class="wave">wave 1</span></div><div class="title">Provenance sanction: explicit override with mandatory reason</div><div class="tags"><span class="waits">T-01</span><span class="ready-tag">unlocks T-03</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-04</span><span class="wave">wave 1</span></div><div class="title">Badcode hits annotated with provenance status</div><div class="tags"><span class="waits">T-01</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-23</span><span class="wave">wave 7</span></div><div class="title">ed: niplines request/preview (phase 1) with gofmt/vet preflight</div><div class="tags"><span class="waits">T-22</span><span class="ready-tag">unlocks T-24</span></div></div>
+    </div>
+
+    <div class="col">
+      <div class="col-head"><h2>Then</h2><span class="count">2</span></div>
+      <p class="col-note">Depends on at least one item from Next.</p>
+
+      <div class="card"><div class="card-top"><span class="id">T-03</span><span class="wave">wave 1</span></div><div class="title">Wire provenance into relcore, unconditional alongside badcode</div><div class="tags"><span class="waits">T-02</span></div></div>
+      <div class="card"><div class="card-top"><span class="id">T-24</span><span class="wave">wave 7</span></div><div class="title">ed: niplines confirm/cancel (phase 2), TTL enforcement</div><div class="tags"><span class="waits">T-23</span><span class="ready-tag">unlocks T-25</span></div></div>
+    </div>
+
+    <div class="col">
+      <div class="col-head"><h2>Last</h2><span class="count">1</span></div>
+      <p class="col-note">Waits on the deepest chain in the board.</p>
+
+      <div class="card"><div class="card-top"><span class="id">T-25</span><span class="wave">wave 7</span></div><div class="title">docs: repoman-040-editing.md coverage for insert/append/prepend/niplines</div><div class="tags"><span class="waits">T-20, T-21, T-23, T-24</span></div></div>
+    </div>
+
+  </div>
+
+  <footer>
+    <p style="margin: 0;">Tier placement follows the recorded <code>Blocks/after</code> field on each register item, computed transitively by hand (tier = 1 + the deepest tier among an item's own blockers; unblocked items sit at Now). T-08's own blocker (<code>T-06</code>) is not listed above because T-06 is already closed &mdash; a dependency on shipped work doesn't hold an item back. No manual overrides were applied: every placement here follows directly from the register's own <code>Blocks</code> column, unlike the automated tiering T-08 itself will eventually provide. Every card in Now now carries an explicit tag &mdash; a grey "unblocked, no dependents" checkmark where a card doesn't gate anything else, so an unblocked item with nothing downstream doesn't read the same as one not yet classified.</p>
+    <p style="margin: 0.6rem 0 0;">T-20 and T-21 are marked code complete, pending release (register <code>Status: &#9681;</code>, gorepoman's own kanban symbol for this state): implemented, gofmt/vet/build clean, and the full selftest gate green (ed: 19/19, top-level: 150/150), but not yet in a tagged release. Tier placement is unaffected &mdash; they still sit in Now because nothing blocks them &mdash; but neither is actually "ready to start" from scratch the way the rest of the Now column is; the 8/10 "ready to start" figure above excludes them.</p>
+    <p style="margin: 0.6rem 0 0;">Waves shown: 1 (provenance and gate hardening), 2 (structured dependency data), 4 (kanban views), 6 (release and CI hardening), 7 (ed vocabulary: insert/append/prepend and ticketed niplines). Wave 5 is complete and not shown; wave 3 is a reserved but undefined slot.</p>
+  </footer>
+</div>

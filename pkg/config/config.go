@@ -14,6 +14,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -23,6 +24,18 @@ import (
 type VersionTarget struct {
 	File  string `json:"file"`
 	Match string `json:"match"`
+}
+
+// IDNamespace is one additional, independently-numbered id prefix a
+// register can recognise alongside the primary IDPrefix/IDSeparator --
+// e.g. a project running "T-nn" for general debt and "BF-nn" for
+// bugfixes side by side, both permanently live. Each entry gets its
+// own independent NextID counter, never sharing a sequence with the
+// primary namespace or any other entry (unlike LegacyIDPrefix, a
+// one-time migration aid where old and new shapes share one counter).
+type IDNamespace struct {
+	Prefix    string `json:"prefix"`
+	Separator string `json:"separator"`
 }
 
 // Release holds the release-manifest schema; see relcore.py / relcore.go
@@ -48,6 +61,17 @@ type Config struct {
 	// nothing for a consumer that never sets them.
 	LegacyIDPrefix    string `json:"legacy_id_prefix"`
 	LegacyIDSeparator string `json:"legacy_id_separator"`
+
+	// IDNamespaces: additional id prefixes recognised alongside the
+	// primary IDPrefix/IDSeparator, each with its own independent
+	// NextID counter -- for a project running two (or more) id shapes
+	// permanently side by side (e.g. "T-nn" for general debt and
+	// "BF-nn" for bugfixes, both live indefinitely), as distinct from
+	// LegacyIDPrefix above, which is for a one-time migration where the
+	// old shape is retired in favour of the new one and the two share a
+	// single counter. Empty (the default) is byte-identical to
+	// behaviour before this key existed.
+	IDNamespaces []IDNamespace `json:"id_namespaces"`
 
 	Tracking    string `json:"tracking"`
 	Resolved    string `json:"resolved"`
@@ -92,6 +116,69 @@ type Config struct {
 	WaveHTMLTitle string `json:"wave_html_title"`
 
 	Release Release `json:"release"`
+
+	// Workspaces: which cross-project workspace(s) this project belongs
+	// to. Absent (nil/empty) means no workspace membership at all --
+	// additive default, no behaviour change for a project that never
+	// touches this. CredentialEnv only ever names an environment
+	// variable; the real secret is provisioned separately per machine,
+	// same principle as badcode's own config -- never write a live
+	// credential into this committed file.
+	Workspaces []Workspace `json:"workspaces"`
+}
+
+// Workspace is one cross-project coordination repo this project has
+// joined, per repoman workspace join.
+type Workspace struct {
+	Name          string `json:"name"`
+	Remote        string `json:"remote"`
+	CredentialEnv string `json:"credential_env"`
+	ProjectName   string `json:"project_name"`
+}
+
+// EffectiveIDNamespace pairs one recognised id prefix/separator with
+// the counter group NextID must use for it: GroupKey is "" for the
+// primary namespace and, when configured, the legacy namespace folded
+// into it (so a legacy id and a primary id are never allocated the
+// same number twice -- this preserves the historical single-counter
+// migration behaviour byte-for-byte). Every other namespace gets its
+// own independent group, keyed by its own prefix.
+type EffectiveIDNamespace struct {
+	Prefix    string
+	Separator string
+	GroupKey  string
+}
+
+// EffectiveIDNamespaces returns every id prefix this register
+// recognises: the primary namespace, the legacy namespace if
+// configured (folded into the primary namespace counter group), then
+// each entry from IDNamespaces in order (each its own independent
+// counter group). A namespace whose prefix duplicates one already
+// present is skipped -- first occurrence wins, primary first, then
+// legacy, then IDNamespaces in order -- so a config that
+// (redundantly) repeats the primary prefix inside IDNamespaces never
+// creates a second pattern alternative or a phantom second counter
+// group for it.
+func (c *Config) EffectiveIDNamespaces() []EffectiveIDNamespace {
+	seen := map[string]bool{}
+	var out []EffectiveIDNamespace
+
+	add := func(prefix, sep, group string) {
+		if prefix == "" || seen[prefix] {
+			return
+		}
+		seen[prefix] = true
+		out = append(out, EffectiveIDNamespace{Prefix: prefix, Separator: sep, GroupKey: group})
+	}
+
+	add(c.IDPrefix, c.IDSeparator, "")
+	if c.LegacyIDPrefix != "" {
+		add(c.LegacyIDPrefix, c.LegacyIDSeparator, "")
+	}
+	for _, ns := range c.IDNamespaces {
+		add(ns.Prefix, ns.Separator, ns.Prefix)
+	}
+	return out
 }
 
 // Defaults returns a fresh copy of the default configuration. A fresh
@@ -104,6 +191,7 @@ func Defaults() Config {
 		IDSeparator:       "-",
 		LegacyIDPrefix:    "",
 		LegacyIDSeparator: "-",
+		IDNamespaces:      []IDNamespace{},
 		Tracking:          "docs/TRACKING.md",
 		Resolved:          "docs/RESOLVED.md",
 		KnownIssues:       "docs/KNOWN_ISSUES.md",
@@ -121,6 +209,7 @@ func Defaults() Config {
 			Steps:   []map[string]interface{}{},
 			Archive: map[string]interface{}{},
 		},
+		Workspaces: []Workspace{},
 	}
 }
 
@@ -199,6 +288,21 @@ func Load(start string) (string, Config, error) {
 
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return "", Config{}, err
+	}
+	// B-06 fix: a version_targets entry with the wrong field name (the
+	// shape is only documented in repoman-090, not in --help; "pattern"
+	// is an easy mistake for "match") used to be accepted silently --
+	// Match stayed at its zero value, and syncver reported "<no match>"
+	// for the file, which reads as a content mismatch rather than what
+	// it actually is, a config error. A file entry with no regex to
+	// match against is never valid, so it's rejected here explicitly.
+	for i, vt := range cfg.VersionTargets {
+		if vt.File != "" && vt.Match == "" {
+			return "", Config{}, fmt.Errorf(
+				"version_targets[%d]: %q has no \"match\" field (or it's empty) -- "+
+					"each entry needs {\"file\": ..., \"match\": \"regex with one capture group\"}; "+
+					"check for a typo like \"pattern\" instead of \"match\"", i, vt.File)
+		}
 	}
 	return root, cfg, nil
 }

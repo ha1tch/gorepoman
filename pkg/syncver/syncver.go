@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/report"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
@@ -131,7 +132,14 @@ Subcommands:
   bump-major     Increment the major component (X.0.0) everywhere.
 
 Options:
-  -h, --help   Show this help message and exit.
+  -h, --help       Show this help message and exit.
+  --format FORMAT  For show/check: text (default), json, or html.
+                   json is a stable, queryfy-validated data contract
+                   for other systems -- no presentation information.
+                   html is a self-contained document in gorepoman's
+                   own visual style; an agent with shell access to
+                   repoman should relay this output directly rather
+                   than re-deriving a rendering from json output.
 
 See https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html
 for how this fits into a full release alongside relcore.
@@ -147,6 +155,7 @@ func Run(args []string) int {
 			return 0
 		}
 	}
+	format, args := report.ExtractFormat(args)
 	cmd := "show"
 	if len(args) > 0 {
 		cmd = args[0]
@@ -160,12 +169,38 @@ func Run(args []string) int {
 
 	switch cmd {
 	case "show":
-		ok, detail := CheckDetail(root, &cfg)
-		status := "ok"
-		if !ok {
-			status = "MISMATCH — " + detail
+		status := CheckDetailed(root, &cfg)
+		switch format {
+		case "text":
+			ok, detail := CheckDetail(root, &cfg)
+			syncS := "ok"
+			if !ok {
+				syncS = "MISMATCH — " + detail
+			}
+			fmt.Printf("version: %s  sync: %s\n", status.Version, syncS)
+		case "json":
+			if err := Validate(status); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			if err := report.EmitJSON(os.Stdout, "syncver", "syncver-status", SchemaVersion, status); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+		case "html":
+			body, err := renderStatusHTML(status)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			if err := report.EmitHTML(os.Stdout, "syncver status", "syncver", "syncver-status", body); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+			return 1
 		}
-		fmt.Printf("version: %s  sync: %s\n", GetVersion(root, &cfg), status)
 	case "set":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "error: set requires a version argument")
@@ -177,13 +212,43 @@ func Run(args []string) int {
 		}
 		fmt.Printf("version set to %s\n", args[1])
 	case "check":
-		ok, detail := CheckDetail(root, &cfg)
-		if ok {
-			fmt.Printf("OK: versions in sync (%s)\n", detail)
-			return 0
+		status := CheckDetailed(root, &cfg)
+		exit := 0
+		if !status.InSync {
+			exit = 1
 		}
-		fmt.Printf("MISMATCH: %s\n", detail)
-		return 1
+		switch format {
+		case "text":
+			ok, detail := CheckDetail(root, &cfg)
+			if ok {
+				fmt.Printf("OK: versions in sync (%s)\n", detail)
+			} else {
+				fmt.Printf("MISMATCH: %s\n", detail)
+			}
+		case "json":
+			if err := Validate(status); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			if err := report.EmitJSON(os.Stdout, "syncver", "syncver-status", SchemaVersion, status); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+		case "html":
+			body, err := renderStatusHTML(status)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			if err := report.EmitHTML(os.Stdout, "syncver status", "syncver", "syncver-status", body); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+			return 1
+		}
+		return exit
 	case "bump-patch", "bump-minor", "bump-major":
 		part := strings.Split(cmd, "-")[1]
 		newVer, err := Bump(part, root, &cfg)

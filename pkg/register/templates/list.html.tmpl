@@ -1,0 +1,11 @@
+<div style="display:flex;flex-direction:column;">
+{{range .}}
+<div style="display:grid;grid-template-columns:60px 26px 32px 110px 1fr;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">
+  <span style="font-weight:600;">{{.ID}}</span>
+  <span>{{.Status}}</span>
+  <span style="color:var(--text-2);">{{.Priority}}</span>
+  <span style="color:var(--text-2);">{{.Theme}}</span>
+  <span>{{.Title}}</span>
+</div>
+{{end}}
+</div>

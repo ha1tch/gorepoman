@@ -1,0 +1,29 @@
+{
+  "changelog": "CHANGELOG.md",
+  "id_prefix": "T",
+  "id_separator": "-",
+  "known_issues": "docs/KNOWN_ISSUES.md",
+  "resolved": "docs/RESOLVED.md",
+  "tracking": "docs/TRACKING.md",
+  "version_file": "VERSION",
+  "wave_plan": "docs/WAVE_PLAN.md",
+  "wave_short_names": {
+    "1": "Provenance and gate hardening",
+    "2": "Structured dependency data",
+    "4": "Kanban views",
+    "5": "Workspace mechanism",
+    "6": "Release and CI hardening",
+    "7": "ed vocabulary: insert/append/prepend and ticketed niplines",
+    "8": "advisory work claims on register items"
+  },
+  "wave_tracking": "docs/WAVE_TRACKING.md",
+  "wave_visibility": {
+    "1": true,
+    "2": true,
+    "4": true,
+    "5": true,
+    "6": true,
+    "7": true,
+    "8": true
+  }
+}

@@ -1,0 +1,29 @@
+<div style="display:flex;flex-direction:column;gap:10px;">
+{{range .Waves}}
+<div>
+<div style="display:grid;grid-template-columns:180px 1fr;align-items:center;gap:12px;">
+  <span style="font-size:13px;font-weight:600;text-align:right;">Wave {{.ID}}{{if .Name}} &mdash; {{.Name}}{{end}}</span>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div style="flex:1;height:7px;border-radius:4px;background:var(--surface);overflow:hidden;">
+      <div style="height:100%;width:{{.Pct}}%;border-radius:4px;background:{{if ge .Pct 100}}var(--success){{else if .HasPartial}}var(--warn-track){{else}}var(--muted-track){{end}};"></div>
+    </div>
+    <span style="font-size:12px;color:var(--text-2);white-space:nowrap;">{{if .HasPartial}}~{{end}}{{.Pct}}% &middot; {{printf "%g" .Done}}/{{.Total}}</span>
+  </div>
+</div>
+{{if .Debt}}<div style="margin-left:192px;font-size:11px;color:var(--warn-text);margin-top:2px;">debt: {{range $i, $d := .Debt}}{{if $i}}, {{end}}{{$d}}{{end}}</div>{{end}}
+{{if .Blockers}}<div style="margin-left:192px;font-size:11px;color:var(--acc-text);margin-top:2px;">blockers: {{range $i, $b := .Blockers}}{{if $i}}; {{end}}{{$b.Blocker}} blocks {{range $j, $t := $b.Blocked}}{{if $j}}, {{end}}{{$t}}{{end}}{{end}}</div>{{end}}
+</div>
+{{end}}
+<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:10px;">
+<div style="display:grid;grid-template-columns:180px 1fr;align-items:center;gap:12px;">
+  <span style="font-size:14px;font-weight:600;text-align:right;">Overall</span>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div style="flex:1;height:7px;border-radius:4px;background:var(--surface);overflow:hidden;">
+      <div style="height:100%;width:{{.OverallPct}}%;border-radius:4px;background:var(--acc-track);"></div>
+    </div>
+    <span style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;">{{.OverallPct}}% &middot; {{printf "%g" .OverallDone}}/{{.OverallTotal}}</span>
+  </div>
+</div>
+</div>
+{{if gt .HiddenCount 0}}<p style="font-size:11px;color:var(--text-3);margin-top:10px;">{{.HiddenCount}} wave(s) hidden</p>{{end}}
+</div>

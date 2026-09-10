@@ -16,6 +16,7 @@ between descriptions.
 | `id_separator` | `"-"` | `register` |
 | `legacy_id_prefix` | `""` | `register` |
 | `legacy_id_separator` | `"-"` | `register` |
+| `id_namespaces` | `[]` | `register`, `waveprogress` |
 | `tracking` | `"docs/TRACKING.md"` | `register` |
 | `resolved` | `"docs/RESOLVED.md"` | `register` |
 | `known_issues` | `"docs/KNOWN_ISSUES.md"` | `guards` |
@@ -30,6 +31,7 @@ between descriptions.
 | `wave_visibility` | `{}` | `waveprogress` |
 | `wave_html_title` | `"wave progress"` | `waveprogress` |
 | `release` | `{"steps": [], "archive": {}}` | `relcore` |
+| `workspaces` | `[]` | `workspace` |
 
 ## Register ids
 
@@ -49,6 +51,28 @@ permanently frozen in `T-NNN` shape, with `T-164` onward forward-only in a
 new `XOTNNN` shape. Leaving `legacy_id_prefix` empty (the default) means
 single-format behavior, byte-identical to before these two keys existed —
 they're additive and change nothing for a consumer that never sets them.
+
+**`id_namespaces`** (default `[]`) — additional id prefixes recognized
+alongside the primary `id_prefix`/`id_separator`, each with its own
+independent `next_id()` counter. This is for a project running two (or
+more) id shapes *permanently side by side* — e.g. `T-nn` for general debt
+and `BF-nn` for bugfixes, both live indefinitely — as distinct from
+`legacy_id_prefix` above, which is for a one-time migration where the old
+shape is retired in favor of the new one and the two share a single
+counter. Each entry is `{"prefix": ..., "separator": ...}`:
+
+```json
+"id_namespaces": [
+  {"prefix": "BF", "separator": "-"}
+]
+```
+
+`register add --id-prefix BF ...` allocates from that namespace (refused
+if `--id-prefix` names anything not listed here); a plain `register add`
+with no `--id-prefix` always uses the primary namespace. `register
+check`/`list` recognize ids from every configured namespace — before this
+key existed, a second live namespace like `BF-nn` was silently invisible
+to both, undercounting open items with no warning at all.
 
 ## Register, resolved, and known-issues paths
 
@@ -155,3 +179,32 @@ always-excluded self-generated output (`MANIFEST.sha256`,
 `archive.name` supports `{repo}` and `{version}` placeholders;
 `size_warn_mb` (default `3`) flags an archive larger than that many
 megabytes rather than silently producing an unexpectedly large one.
+
+## Workspace membership
+
+**`workspaces`** (default `[]`) — every cross-project workspace this
+project has joined, written and maintained entirely by `repoman
+workspace join`/`leave` (see `repoman-086-workspace.md`); never
+hand-edited. Each entry:
+
+```json
+{
+  "name": "acme-platform",
+  "remote": "git@github.com:acme/workspace.git",
+  "credential_env": "ACME_WORKSPACE_TOKEN",
+  "project_name": "acme-web"
+}
+```
+
+`name` identifies the workspace locally (what every `workspace`
+subcommand takes as its first argument). `remote` is the git remote
+`join` cloned from and every subsequent workspace operation clones
+again. `credential_env` only ever *names* an environment variable
+that holds the credential for pushing to `remote` — the secret itself
+is never written here, provisioned separately per machine, the same
+principle `badcode`'s own config follows. `project_name` is the name
+this project registered under on the workspace side at `join` time;
+`workspace newissue` defaults its filer identity to this rather than
+re-deriving it from the current directory, so a project can't
+register as one name and file issues under a different one by
+accident.

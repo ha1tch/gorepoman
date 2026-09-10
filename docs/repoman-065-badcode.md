@@ -68,16 +68,27 @@ $ repoman badcode check .
 BADCODE CHECK OK (4 pattern(s) checked)
 ```
 
-A real match refuses clearly, with file, line, and (if configured) the
-reason:
+A real match refuses clearly, with file, line, provenance status, and
+(if configured) the reason:
 
 ```
 $ repoman badcode check .
 BADCODE CHECK FAIL: 1 match(es)
 ERROR badcode-match: pattern "INTERNAL_CODENAME" (project codename --
 must never appear in anything meant for external publication) found
-in README.md:12: still using INTERNAL_CODENAME in this draft
+in README.md:12 [no provenance record]: still using INTERNAL_CODENAME
+in this draft
 ```
+
+The bracketed provenance status (T-04) is one of three labels:
+`repoman` (the matched file's current content matches repoman's own
+journal record -- it genuinely was written through `ed`/`strreplace`),
+`no provenance record` (the file has never been touched by repoman at
+all), or `stale provenance record` (repoman wrote the file at some
+point, but it has since changed outside repoman's own write paths
+too). No adjacent secret-scanning tool (Gitleaks, TruffleHog, and
+similar) can make this distinction, since none of them own the
+editing layer the way repoman does.
 
 ## No config configured
 
@@ -120,6 +131,13 @@ first thing it does, before reading `release.steps`, before any step
 runs, including on `--resume` -- it is not part of the resumable-steps
 journal at all, so there is nothing for `--resume` to bypass. A real
 match blocks the entire release; fixing the match (removing the
-matched content) and re-running proceeds normally. See
-`repoman-070-releases.md` for the full release workflow this sits
-inside.
+matched content) and re-running proceeds normally.
+
+Immediately alongside it, `relcore` also runs a `provenance` pre-flight
+(T-03, see `repoman-088-provenance.md`) with the exact same discipline
+-- unconditional, not a `release.steps` entry, not resumable, no
+bypass on `--resume`. An unsanctioned out-of-band edit to a
+journal-tracked file blocks the release the same way a `badcode` hit
+does; `repoman provenance sanction FILE --reason "..."` is the only
+way through. See `repoman-070-releases.md` for the full release
+workflow this sits inside.

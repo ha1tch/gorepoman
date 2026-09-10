@@ -96,6 +96,34 @@ filed to track something unrelated. `check` runs against a
 deliberately-broken fixture in `selftest`, specifically so it's proven to
 *catch* a real mismatch, not just pass on well-formed data.
 
+### Scripted consumption: `--format`
+
+`list`, `show`, and `check` all take `--format` (`repoman-055-format.md`)
+for anything reading the register mechanically rather than a person
+reading a terminal:
+
+```
+$ repoman register check --format json
+{
+  "tool": "register",
+  "object": "register-check",
+  "schema_version": 1,
+  "data": {
+    "errors": [
+      "[A3] T-0: table [meta P1 ☐] vs detail [meta P4 ☐]"
+    ],
+    "open_items": 2,
+    "ok": false
+  },
+  "generated_at": "2026-08-30T14:00:00Z"
+}
+```
+
+`show <id> --format json` returns the item's raw section text alongside
+its id and title (`{"id": ..., "title": ..., "block": "..."}`) — the
+same text `show`'s default form prints, structured rather than requiring
+a consumer to re-parse `### T-01. ...` headings out of plain text.
+
 ## Dormant guards: `docs/KNOWN_ISSUES.md`
 
 A dormant guard is any check that doesn't run in the default test
@@ -141,6 +169,31 @@ guard is never inferred from another guard's recorded campaign, and a
 guard whose gating hardware genuinely isn't available in-session gets
 handed to a human with the exact invocation rather than marked current on
 the strength of a partial or simulated run.
+
+### Scripted consumption: `--format`
+
+`list`, `show`, and `stale` all take `--format` (`repoman-055-format.md`):
+
+```
+$ repoman guards stale --since 2026-08-01 --format json
+{
+  "tool": "guards",
+  "object": "guards-stale",
+  "schema_version": 1,
+  "data": {
+    "since": "2026-08-01",
+    "stale": [
+      {"id": "G-01", "title": "concurrent-writer race guard (`store_race_test.go`)", "last_exercised": "2026-06-01"}
+    ],
+    "all_current": false
+  },
+  "generated_at": "2026-08-30T14:00:00Z"
+}
+```
+
+`stale --format json`'s exit code still carries the same meaning as the
+text form's — non-zero whenever `all_current` is `false` — so it slots
+into a release-gate script exactly like `stale` always has.
 
 ## Where this feeds into a release
 

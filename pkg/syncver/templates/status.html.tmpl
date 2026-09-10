@@ -1,0 +1,12 @@
+<p style="font-size:13px;color:var(--text-2);margin:0 0 1rem;">version <strong style="color:var(--text);">{{.Version}}</strong> &middot;
+{{if .InSync}}<span style="color:var(--success);">in sync</span>{{else}}<span style="color:var(--warn-text);">mismatch</span>{{end}}
+</p>
+<div style="display:flex;flex-direction:column;gap:6px;">
+{{range .Targets}}
+<div style="display:grid;grid-template-columns:220px 1fr auto;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">
+  <span style="color:var(--text-2);">{{.File}}</span>
+  <span style="font-family:ui-monospace,monospace;">{{.Value}}</span>
+  {{if .Match}}<span style="color:var(--success);">match</span>{{else}}<span style="color:var(--warn-text);">mismatch</span>{{end}}
+</div>
+{{end}}
+</div>

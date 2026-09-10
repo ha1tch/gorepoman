@@ -129,6 +129,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ha1tch/gorepoman/pkg/ed"
 	"github.com/ha1tch/gorepoman/pkg/roles"
 )
 
@@ -203,6 +204,12 @@ func isValidUTF8(b []byte) bool { return utf8.Valid(b) }
 
 // readFileUTF8 reads a file and requires it decode as UTF-8, matching
 // _read_file_utf8's own refusal class.
+//
+// T-31: also gates against reading a journal-tracked file that has
+// been edited outside repoman since repoman last touched it -- the
+// read that feeds every strreplace write path (stageSubOp's initial
+// load via ensureLoaded, and the write pass's own re-read before
+// committing), so gating here once covers all of them.
 func readFileUTF8(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -210,6 +217,10 @@ func readFileUTF8(path string) (string, error) {
 	}
 	if !utf8.Valid(raw) {
 		return "", refused("invalid-utf8-file", "%s: not valid UTF-8", path)
+	}
+	j := ed.LoadJournal()
+	if st := ed.CheckProvenance(j, path); st.Mismatch || st.Missing {
+		return "", refused("provenance-mismatch", "%s was edited outside repoman since %s -- run `repoman provenance check` for details. Nothing written.", path, st.RecordedAt)
 	}
 	return string(raw), nil
 }

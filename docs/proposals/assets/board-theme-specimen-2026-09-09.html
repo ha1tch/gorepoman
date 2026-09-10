@@ -1,0 +1,521 @@
+<title>gorepoman Dependency Board</title>
+<meta name="description" content="Live dependency-order board for gorepoman's register, computed from Blocks/after — 22 open items across four tiers.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ---- theme: poesy (default) ---- */
+:root {
+  --bg: #F4F5F3;
+  --surface: #FFFFFF;
+  --surface-2: #ECEEEC;
+  --border: #DCDFDB;
+  --text: #1C201E;
+  --text-2: #5B6360;
+  --text-3: #8A9490;
+  --accent: #0E7C7B;
+  --accent-bg: #E3F1F0;
+  --done: #3D7A45;
+  --done-bg: #E7F1E5;
+  --wait: #8A6D1D;
+  --wait-bg: #F4EDD8;
+  --shadow: none;
+  --card-border-w: 0.5px;
+  --radius-card: 10px;
+  --radius-tag: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181A;
+    --surface: #1B2023;
+    --surface-2: #171B1D;
+    --border: #2B3235;
+    --text: #ECEFEE;
+    --text-2: #A9B2AF;
+    --text-3: #79837F;
+    --accent: #3FBDB9;
+    --accent-bg: #16302F;
+    --done: #6FBF77;
+    --done-bg: #1E2E1E;
+    --wait: #D6B25A;
+    --wait-bg: #2F2814;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181A;
+  --surface: #1B2023;
+  --surface-2: #171B1D;
+  --border: #2B3235;
+  --text: #ECEFEE;
+  --text-2: #A9B2AF;
+  --text-3: #79837F;
+  --accent: #3FBDB9;
+  --accent-bg: #16302F;
+  --done: #6FBF77;
+  --done-bg: #1E2E1E;
+  --wait: #D6B25A;
+  --wait-bg: #2F2814;
+}
+
+/* ---- theme: earth (the previous default, kept as an alternative) ---- */
+:root[data-palette="earth"] {
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --surface-2: #f1efe9;
+  --border: #e3e0d6;
+  --text: #1c1a15;
+  --text-2: #5c5848;
+  --text-3: #948e78;
+  --accent: #2f5d50;
+  --accent-bg: #e4ede9;
+  --done: #3f7d3a;
+  --done-bg: #e7f0e3;
+  --wait: #a3792e;
+  --wait-bg: #f7eee2;
+  --shadow: 0 1px 2px rgba(28,26,21,0.04), 0 1px 1px rgba(28,26,21,0.03);
+  --card-border-w: 1px;
+  --radius-card: 8px;
+  --radius-tag: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="earth"]:not([data-theme="light"]) {
+    --bg: #14140f;
+    --surface: #1c1b16;
+    --surface-2: #24231d;
+    --border: #38362c;
+    --text: #ece9de;
+    --text-2: #b3ae9c;
+    --text-3: #756f5c;
+    --accent: #7fbfa9;
+    --accent-bg: #1f332c;
+    --done: #7ec177;
+    --done-bg: #1f2e1c;
+    --wait: #d9ad6c;
+    --wait-bg: #3a2c19;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 1px rgba(0,0,0,0.2);
+  }
+}
+:root[data-palette="earth"][data-theme="dark"] {
+  --bg: #14140f;
+  --surface: #1c1b16;
+  --surface-2: #24231d;
+  --border: #38362c;
+  --text: #ece9de;
+  --text-2: #b3ae9c;
+  --text-3: #756f5c;
+  --accent: #7fbfa9;
+  --accent-bg: #1f332c;
+  --done: #7ec177;
+  --done-bg: #1f2e1c;
+  --wait: #d9ad6c;
+  --wait-bg: #3a2c19;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 1px rgba(0,0,0,0.2);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  padding: 2rem 1.5rem 3rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.page { max-width: 1250px; margin: 0 auto; }
+
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+.palette-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface);
+}
+.palette-switch button {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.palette-switch button.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.palette-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+header.top { margin-bottom: 1.5rem; }
+h1 {
+  font-size: 22px;
+  font-weight: 500;
+  text-wrap: balance;
+  margin: 0 0 0.35rem;
+}
+h1 .mono { font-family: "IBM Plex Mono", monospace; color: var(--accent); }
+
+p.dek {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+  max-width: 62ch;
+  margin: 0;
+}
+p.dek code {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: var(--radius-tag);
+}
+
+.stats { display: flex; gap: 1.5rem; margin-top: 1rem; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .n {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.stat .l {
+  font-size: 12px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 250px;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+@media (min-width: 1150px) {
+  .board {
+    grid-auto-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 2px 8px;
+  border-bottom: 2px solid var(--border);
+}
+.col-head h2 { font-size: 14px; font-weight: 500; margin: 0; }
+.col-head .count { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--text-3); }
+.col-note {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.5;
+  padding: 0 2px;
+  margin-top: -4px;
+  min-height: calc(11.5px * 1.5 * 2);
+  margin-bottom: 0;
+}
+
+.card {
+  background: var(--surface);
+  border: var(--card-border-w) solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  box-shadow: var(--shadow);
+}
+.card.is-done { border-color: var(--accent); }
+
+.card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-top-left { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.id { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 500; color: var(--accent); }
+.wave {
+  font-size: 10.5px;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-tag);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.pri-tag {
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  border-radius: var(--radius-tag);
+  padding: 2px 6px;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.pri-tag.p1 { color: var(--wait); background: var(--wait-bg); }
+.pri-tag.p2 { color: var(--accent); background: var(--accent-bg); }
+.pri-tag.p3 { color: var(--text-3); background: var(--surface-2); }
+.title { font-size: 13px; line-height: 1.45; color: var(--text); }
+
+.waits, .ready-tag, .progress-tag, .theme-tag {
+  font-size: 11px;
+  font-family: "IBM Plex Mono", monospace;
+  border-radius: var(--radius-tag);
+  padding: 3px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+}
+.waits { color: var(--wait); background: var(--wait-bg); }
+.waits::before { content: "\2192"; }
+.ready-tag { color: var(--done); background: var(--done-bg); }
+.progress-tag { color: var(--accent); background: var(--accent-bg); }
+.progress-tag::before { content: "\25D0"; }
+.theme-tag { color: var(--text-3); background: var(--surface-2); }
+
+.tag-row { display: flex; flex-wrap: wrap; gap: 5px; }
+
+footer.note {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 0.5px solid var(--border);
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.7;
+  max-width: 74ch;
+}
+footer.note code { font-family: "IBM Plex Mono", monospace; }
+footer.note p { margin: 0.6rem 0 0; }
+
+@media (max-width: 860px) {
+  .stats { gap: 1rem; }
+}
+</style>
+
+<div class="page">
+
+<div class="topbar">
+  <div class="palette-switch" role="group" aria-label="Board theme">
+    <button type="button" id="btn-poesy" class="active">poesy</button>
+    <button type="button" id="btn-earth">earth</button>
+  </div>
+</div>
+
+<header class="top">
+  <h1><span class="mono">gorepoman</span> — dependency board</h1>
+  <p class="dek">Every open register item, tiered by <code>Blocks/after</code>. A tier is unlocked once every blocker in a lower tier is closed — placement follows the dependency graph only and is never overridden by status. Source: <code>docs/TRACKING.md</code>, generated 2026-09-09.</p>
+  <div class="stats">
+    <div class="stat"><span class="n">22</span><span class="l">open items</span></div>
+    <div class="stat"><span class="n">4</span><span class="l">build tiers</span></div>
+    <div class="stat"><span class="n">14</span><span class="l">ready now</span></div>
+    <div class="stat"><span class="n">6</span><span class="l">waves involved</span></div>
+    <div class="stat"><span class="n">7</span><span class="l">code complete</span></div>
+  </div>
+</header>
+
+<div class="board">
+
+  <div class="col">
+    <div class="col-head"><h2>Now</h2><span class="count">14</span></div>
+    <p class="col-note">No unresolved dependency — only needs already-shipped work.</p>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p1">P1</span><span class="id">T-01</span></div><span class="wave">wave 1</span></div>
+      <div class="title">provenance check: detect out-of-band edits to journal-tracked files</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="ready-tag">unlocks T-02</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p1">P1</span><span class="id">T-03</span></div><span class="wave">wave 1</span></div>
+      <div class="title">wire provenance into relcore, unconditional alongside badcode</div>
+      <div class="tag-row"><span class="theme-tag">provenance</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-04</span></div><span class="wave">wave 1</span></div>
+      <div class="title">badcode hits annotated with provenance status</div>
+      <div class="tag-row"><span class="theme-tag">provenance</span></div>
+    </div>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-05</span></div><span class="wave">wave 2</span></div>
+      <div class="title">parse Blocks/after into real graph edges, with cycle detection</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="ready-tag">unlocks T-08</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p3">P3</span><span class="id">T-15</span></div><span class="wave">wave 6</span></div>
+      <div class="title">relcore orchestrates GoReleaser as a resumable step</div>
+      <div class="tag-row"><span class="theme-tag">release-hardening</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p3">P3</span><span class="id">T-16</span></div><span class="wave">wave 6</span></div>
+      <div class="title">canonical CI workflow: badcode + selftest as a required PR check</div>
+      <div class="tag-row"><span class="theme-tag">release-hardening</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p3">P3</span><span class="id">T-17</span></div><span class="wave">wave 6</span></div>
+      <div class="title">roles backed by a real structural matcher (research spike)</div>
+      <div class="tag-row"><span class="theme-tag">release-hardening</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p3">P3</span><span class="id">T-18</span></div><span class="wave">wave 6</span></div>
+      <div class="title">guards: distinguish never-rerun from code-moved-since (underdesigned)</div>
+      <div class="tag-row"><span class="theme-tag">release-hardening</span></div>
+    </div>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-20</span></div><span class="wave">wave 7</span></div>
+      <div class="title">ed: append/prepend verbs, no handle required (file-boundary insertion)</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="ready-tag">unlocks T-25</span></div>
+    </div>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-21</span></div><span class="wave">wave 7</span></div>
+      <div class="title">ed: insert verb, handle-verified positional insertion</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="ready-tag">unlocks T-25</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-22</span></div><span class="wave">wave 7</span></div>
+      <div class="title">ed: pending-ticket storage design for niplines two-phase flow</div>
+      <div class="tag-row"><span class="theme-tag">ed-editing</span><span class="ready-tag">unlocks T-23</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-26</span></div><span class="wave">wave 8</span></div>
+      <div class="title">Claimed-by: optional register-item field for advisory work claims</div>
+      <div class="tag-row"><span class="theme-tag">locking</span><span class="ready-tag">unlocks T-27, T-29</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-30</span></div><span class="wave">no wave</span></div>
+      <div class="title">board --format json fails validation on every axis: legend field cannot be null</div>
+      <div class="tag-row"><span class="theme-tag">kanban</span></div>
+    </div>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p1">P1</span><span class="id">T-31</span></div><span class="wave">no wave</span></div>
+      <div class="title">gate ed/strreplace write paths' own reads with a provenance check</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="theme-tag">provenance</span></div>
+    </div>
+
+  </div>
+
+  <div class="col">
+    <div class="col-head"><h2>Next</h2><span class="count">5</span></div>
+    <p class="col-note">Depends only on items already in Now.</p>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p1">P1</span><span class="id">T-02</span></div><span class="wave">wave 1</span></div>
+      <div class="title">provenance sanction: explicit override with mandatory reason</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="waits">T-01</span></div>
+    </div>
+
+    <div class="card is-done">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-08</span></div><span class="wave">wave 4</span></div>
+      <div class="title">board: cross-project dependency-order tiering</div>
+      <div class="tag-row"><span class="progress-tag">code complete, pending release</span><span class="waits">T-05</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-23</span></div><span class="wave">wave 7</span></div>
+      <div class="title">ed: niplines request/preview (phase 1) with gofmt/vet preflight</div>
+      <div class="tag-row"><span class="waits">T-22</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-27</span></div><span class="wave">wave 8</span></div>
+      <div class="title">register claim/release: write and clear Claimed-by, journaled</div>
+      <div class="tag-row"><span class="waits">T-26</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p3">P3</span><span class="id">T-29</span></div><span class="wave">wave 8</span></div>
+      <div class="title">surface claims on register/board views (kanban, board, board --definition)</div>
+      <div class="tag-row"><span class="waits">T-26</span></div>
+    </div>
+
+  </div>
+
+  <div class="col">
+    <div class="col-head"><h2>Then</h2><span class="count">2</span></div>
+    <p class="col-note">Depends on at least one item from Next.</p>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-24</span></div><span class="wave">wave 7</span></div>
+      <div class="title">ed: niplines confirm/cancel (phase 2), TTL enforcement</div>
+      <div class="tag-row"><span class="waits">T-23</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p2">P2</span><span class="id">T-28</span></div><span class="wave">wave 8</span></div>
+      <div class="title">stale-claim policy: TTL or override for an abandoned Claimed-by</div>
+      <div class="tag-row"><span class="waits">T-26, T-27</span></div>
+    </div>
+
+  </div>
+
+  <div class="col">
+    <div class="col-head"><h2>Last</h2><span class="count">1</span></div>
+    <p class="col-note">Waits on the deepest chain in the board.</p>
+
+    <div class="card">
+      <div class="card-top"><div class="card-top-left"><span class="pri-tag p3">P3</span><span class="id">T-25</span></div><span class="wave">wave 7</span></div>
+      <div class="title">docs: repoman-040-editing.md coverage for insert/append/prepend/niplines</div>
+      <div class="tag-row"><span class="waits">T-20, T-21, T-23, T-24</span></div>
+    </div>
+
+  </div>
+
+</div>
+
+<footer class="note">
+  Tier placement follows the recorded <code>Blocks/after</code> field on each register item — a closed or absent blocker doesn't hold its dependent back, so a code-complete item still occupies the tier its dependents actually need it to clear.
+  <p>Code-complete marker (T-01, T-02, T-05, T-08, T-20, T-21, T-31): implementation and tests are done and green; the item stays open on purpose, batched into a release with its own CHANGELOG entry and version bump rather than closed one at a time.</p>
+  <p>T-03 and T-04's recorded blockers (<code>T-2</code>, <code>T-1</code>) don't match any real id — likely meant <code>T-02</code>/<code>T-01</code> — worth a register fix, not corrected here. T-30 and T-31 carry no wave assignment in <code>docs/WAVE_TRACKING.md</code> — filed as standalone debt rather than as part of a wave. Generated from <code>repoman board --definition</code> against the live 22-item register.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btnPoesy = document.getElementById('btn-poesy');
+  var btnEarth = document.getElementById('btn-earth');
+
+  function setPalette(name) {
+    if (name === 'earth') {
+      root.setAttribute('data-palette', 'earth');
+      btnEarth.classList.add('active');
+      btnPoesy.classList.remove('active');
+    } else {
+      root.removeAttribute('data-palette');
+      btnPoesy.classList.add('active');
+      btnEarth.classList.remove('active');
+    }
+    try { localStorage.setItem('gorepoman-board-palette', name); } catch (e) {}
+  }
+
+  var stored = null;
+  try { stored = localStorage.getItem('gorepoman-board-palette'); } catch (e) {}
+  setPalette(stored === 'earth' ? 'earth' : 'poesy');
+
+  btnPoesy.addEventListener('click', function () { setPalette('poesy'); });
+  btnEarth.addEventListener('click', function () { setPalette('earth'); });
+})();
+</script>

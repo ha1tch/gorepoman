@@ -6,10 +6,12 @@ import (
 
 	"github.com/ha1tch/gorepoman/pkg/addwave"
 	"github.com/ha1tch/gorepoman/pkg/badcode"
+	"github.com/ha1tch/gorepoman/pkg/board"
 	"github.com/ha1tch/gorepoman/pkg/doctor"
 	"github.com/ha1tch/gorepoman/pkg/ed"
 	"github.com/ha1tch/gorepoman/pkg/gomod"
 	"github.com/ha1tch/gorepoman/pkg/guards"
+	"github.com/ha1tch/gorepoman/pkg/provenance"
 	"github.com/ha1tch/gorepoman/pkg/register"
 	"github.com/ha1tch/gorepoman/pkg/relcore"
 	"github.com/ha1tch/gorepoman/pkg/roles"
@@ -18,6 +20,7 @@ import (
 	"github.com/ha1tch/gorepoman/pkg/syncver"
 	"github.com/ha1tch/gorepoman/pkg/waveprogress"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
+	"github.com/ha1tch/gorepoman/pkg/workspace"
 )
 
 // version is overridden at build time via
@@ -31,12 +34,15 @@ func printUsage() {
 	fmt.Println("\nCommands:")
 	fmt.Println("  version      Print the build version")
 	fmt.Println("  badcode      Scan for forbidden strings (local config, never in a repo)")
+	fmt.Println("  board        Aggregate several local project checkouts into one view")
+	fmt.Println("  workspace    Join/leave a cross-project workspace; list memberships")
 	fmt.Println("  doctor       Environment diagnostic")
 	fmt.Println("  ed           Journaled text editing")
 	fmt.Println("  roles        Syntactic-role auditor")
 	fmt.Println("  strreplace   Format-aware base64 substitution")
 	fmt.Println("  register     Live-register operations (TRACKING.md)")
 	fmt.Println("  guards       Dormant-guard registry")
+	fmt.Println("  provenance   Detect (and sanction) files edited outside repoman")
 	fmt.Println("  syncver      Version synchronization")
 	fmt.Println("  relcore      Manifest-driven release orchestration")
 	fmt.Println("  waveprogress Regenerate wave tracking documents")
@@ -60,11 +66,12 @@ func printUsage() {
 	fmt.Println("  5. Releasing: `repoman syncver` to keep version strings in sync,")
 	fmt.Println("     `repoman gomod check` for go.mod/go.sum sanity, then")
 	fmt.Println("     `repoman relcore <version>` to orchestrate the release itself --")
-	fmt.Println("     this runs `badcode check` unconditionally first, before anything")
-	fmt.Println("     else, including on --resume. Its config is deliberately never")
-	fmt.Println("     stored in this repository -- if this project has one from a prior")
-	fmt.Println("     session, check your own notes/memory and recreate it before")
-	fmt.Println("     release work, not after `badcode` reports nothing configured.")
+	fmt.Println("     this runs `badcode check` and `provenance check` unconditionally")
+	fmt.Println("     first, before anything else, including on --resume. badcode's")
+	fmt.Println("     config is deliberately never stored in this repository -- if this")
+	fmt.Println("     project has one from a prior session,")
+	fmt.Println("     check your own notes/memory and recreate it before release work,")
+	fmt.Println("     not after `badcode` reports nothing configured.")
 	fmt.Println("\nRun `repoman <command> -h` for help on a specific command -- every")
 	fmt.Println("command's help links to the matching chapter of the full docs.")
 	fmt.Println("Full documentation: https://ha1tch.github.io/gorepoman/")
@@ -122,6 +129,12 @@ func main() {
 	switch cmd {
 	case "badcode":
 		exitCode = badcode.Run(args)
+	case "provenance":
+		exitCode = provenance.Run(args)
+	case "board":
+		exitCode = board.Run(args)
+	case "workspace":
+		exitCode = workspace.Run(args)
 	case "doctor":
 		exitCode = doctor.Run(args)
 	case "ed":

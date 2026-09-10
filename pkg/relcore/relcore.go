@@ -16,6 +16,7 @@ import (
 
 	"github.com/ha1tch/gorepoman/pkg/badcode"
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/provenance"
 	"github.com/ha1tch/gorepoman/pkg/syncver"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
@@ -312,8 +313,8 @@ func runBadcodePreflight(root, version string) int {
 			if m.Pattern.Reason != "" {
 				reason = fmt.Sprintf(" (%s)", m.Pattern.Reason)
 			}
-			say(fmt.Sprintf("   ERROR badcode-match: pattern %q%s found in %s:%d: %s",
-				m.Pattern.Text, reason, m.File, m.Line, m.Snippet))
+			say(fmt.Sprintf("   ERROR badcode-match: pattern %q%s found in %s:%d [%s]: %s",
+				m.Pattern.Text, reason, m.File, m.Line, m.Provenance, m.Snippet))
 		}
 		journal.record("__badcode_preflight__", "fail", map[string]interface{}{"matches": len(matches)})
 		say(fmt.Sprintf("   FAIL badcode: %d match(es) -- this gate has no override; remove the "+
@@ -326,6 +327,55 @@ func runBadcodePreflight(root, version string) int {
 	return 0
 }
 
+// runProvenancePreflight is T-03: a mandatory, unconditional gate run
+// immediately alongside runBadcodePreflight, before any release.steps
+// entry, on every release including --resume -- the same discipline,
+// for the same reason. badcode catches forbidden content; this catches
+// an unsanctioned out-of-band edit to a journal-tracked file (T-01),
+// which is a different failure mode badcode cannot see at all: content
+// that is not itself forbidden, but that bypassed repoman's own
+// find/apply staleness check and journal recording (the real incident
+// T-01/T-31 close). Like badcode, it is not a release.steps entry (so
+// it cannot be removed from .repoman.json by anyone with repo access),
+// not resumable, and not journaled through the skip-if-green path any
+// other step can use. Unlike badcode, no patterns/config to be absent
+// -- provenance.Check() reports OK on zero tracked files the same way
+// it reports OK on zero mismatches, so a repository that has never
+// used ed/strreplace passes trivially, exactly as it should: there is
+// nothing this gate could have caught yet.
+func runProvenancePreflight(root, version string) int {
+	say("-- provenance (mandatory pre-flight, not skippable)")
+
+	journal := loadJournal(root, version)
+
+	mismatches, err := provenance.Check()
+	if err != nil {
+		journal.record("__provenance_preflight__", "fail", map[string]interface{}{"error": err.Error()})
+		say(fmt.Sprintf("   FAIL provenance: %v", err))
+		return 1
+	}
+
+	if len(mismatches) > 0 {
+		for _, m := range mismatches {
+			if m.Missing {
+				say(fmt.Sprintf("   ERROR provenance-missing: %s no longer exists (last known-good hash recorded %s)",
+					m.File, m.RecordedAt))
+				continue
+			}
+			say(fmt.Sprintf("   ERROR provenance-mismatch: %s changed outside repoman since %s -- recorded %s..., now %s...",
+				m.File, m.RecordedAt, m.RecordedHex[:12], m.CurrentHex[:12]))
+		}
+		journal.record("__provenance_preflight__", "fail", map[string]interface{}{"mismatches": len(mismatches)})
+		say(fmt.Sprintf("   FAIL provenance: %d mismatch(es) -- this gate has no override; run "+
+			"'repoman provenance sanction FILE --reason \"...\"' for each one first, then re-run",
+			len(mismatches)))
+		return 1
+	}
+
+	journal.record("__provenance_preflight__", "ok", map[string]interface{}{})
+	say("   ok provenance (no out-of-band edits detected)")
+	return 0
+}
 func Run(args []string) int {
 	args = webhelp.NormalizeBriefFirst(args)
 	if len(args) < 1 {
@@ -344,14 +394,16 @@ func Run(args []string) int {
 		fmt.Println("  -h, --help  show this help message and exit")
 		fmt.Println("  --resume")
 		fmt.Println()
-		fmt.Println("Runs `badcode check` unconditionally first, before any release.steps")
-		fmt.Println("entry, including on --resume. Its config is deliberately never stored")
+		fmt.Println("Runs `badcode check` and `provenance check` unconditionally first,")
+		fmt.Println("before any release.steps entry, including on --resume. An unsanctioned")
+		fmt.Println("out-of-band edit to a journal-tracked file blocks the release the same")
+		fmt.Println("way a badcode hit does. badcode's config is deliberately never stored")
 		fmt.Println("in this repository -- if this project has one from a prior session,")
 		fmt.Println("check your own notes/memory and recreate it before running this, not")
 		fmt.Println("after badcode reports nothing configured. See")
 		fmt.Println("https://ha1tch.github.io/gorepoman/docs/repoman-070-releases.html")
-		fmt.Println("for the full release workflow, and repoman-065-badcode.html for")
-		fmt.Println("that gate specifically.")
+		fmt.Println("for the full release workflow, repoman-065-badcode.html for that gate")
+		fmt.Println("specifically, and repoman-088-provenance.html for the provenance gate.")
 		fmt.Println(webhelp.SuppressionNote)
 		webhelp.PrintIfAvailable(os.Stdout, "repoman-070-releases", args)
 		return 0
@@ -383,6 +435,14 @@ func Run(args []string) int {
 	// see pkg/badcode's own doc comment for why that is local and
 	// never repo-committed.
 	if rc := runBadcodePreflight(root, version); rc != 0 {
+		return rc
+	}
+
+	// provenance: T-03, mandatory pre-flight run immediately alongside
+	// badcode, before anything else, including on --resume -- same
+	// discipline as badcode above, for the reasons documented on
+	// runProvenancePreflight itself.
+	if rc := runProvenancePreflight(root, version); rc != 0 {
 		return rc
 	}
 

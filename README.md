@@ -13,6 +13,8 @@ Python original wherever the two languages allow it, so the two are
 interchangeable in a working session. Where they must differ (installation,
 building), that's called out below.
 
+On why this exists as more than a translation exercise: [Cards are for humans vouching. Guards are for machines proving.](docs/cards-and-guards.md).
+
 ## Install
 
 This tool is deliberately usable on projects that have nothing to do with
@@ -112,7 +114,7 @@ Run `repoman doctor` first — an environment diagnostic, not a pass/fail test:
 Go version, platform, and which of the optional external tools (`gofmt`,
 `bash`, `node`, PyYAML) this environment has, with what each enables.
 
-Then run `repoman selftest` — the acceptance gate. 86 checks; exit 0 is the
+Then run `repoman selftest` — the acceptance gate. 188 checks; exit 0 is the
 gate. Do not trust a build whose selftest fails.
 
 ## Commands
@@ -134,6 +136,9 @@ All tools are subcommands of the one binary:
 | `repoman waveprogress` | `wave_progress.py` | Regenerate staged-wave tracking documents (ASCII/HTML) |
 | `repoman addwave` | `add_wave.py` | Add a new staged-work wave |
 | `repoman gomod` | `gomod.py` | go.mod/go.sum sanity gate (replace-directive and go.sum completeness checks) |
+| `repoman provenance` | — | Detect (and sanction) journal-tracked files edited outside repoman (Go-only; see below) |
+| `repoman board` | — | Aggregate several local project checkouts into a cross-project view, or render a configured `--definition` board (Go-only) |
+| `repoman workspace` | — | Join a cross-project workspace and exchange issues between projects (Go-only) |
 | `repoman selftest` | `selftest.py` | Acceptance gate |
 
 Every command accepts `-h`/`--help`, at both the top level and on each
@@ -196,27 +201,43 @@ way forward is removing the matched content and re-running.
 
 ## Status
 
-This translation mirrors the Python original at v0.8.0 feature-for-feature on
-every command — `ed`, `strreplace`, `doctor`, `gomod`, `register`, `guards`,
-`relcore`, `roles`, `syncver`, `waveprogress`, and `addwave` — all verified
-via the shared 75-check `selftest` suite plus direct side-by-side behavioural
-testing on live fixtures against the real compiled Python originals, and
-`roles` in particular against a battery of dedicated stress fixtures covering
-every classifier (Go, Markdown, Python, YAML, HTML) rather than just the
-language-vocabulary sampler most other testing here uses. `badcode` (Go-only,
-no Python original to compare against) is covered by its own 7 checks plus
-4 covering its mandatory `relcore` integration, in the same suite, 86 in
-total.
+**Current surface.** Seventeen top-level commands, 188 selftest checks.
+Twelve commands trace back to the Python original and stayed
+feature-parity translations of it: `ed`, `strreplace`, `doctor`,
+`gomod`, `register`, `guards`, `relcore`, `roles`, `syncver`,
+`waveprogress`, `addwave`, and `selftest`. Five more are Go-only, with
+no Python equivalent: `badcode` (the forbidden-string release gate),
+`board` (cross-project aggregation and `--definition`-configured
+single-project views), `workspace` (cross-project membership and
+issue exchange), `provenance` (detecting, and sanctioning, files
+edited outside repoman), and `version`. See `CHANGELOG.md` for the
+full history of what shipped when, and `docs/repoman-000-index.md`
+for the chapter covering each command in depth.
 
-Eight real, shared bugs have been found this way and fixed in **both**
-languages together (fixing only the Go side would have broken parity rather
-than restored it) — full writeups, fixtures, and ground-truth verification
-for each are in `CHANGELOG.md`: `roles`'s Go backtick-string and block-
-comment tracking, its Markdown fence and inline-code matching, Python's
-triple-quote escape handling, YAML's comment detection, and `addwave`'s
-item-range formatting. `_html_embedded_spans`'s one known `</script>`
-ambiguity is a deliberate, documented exception — it matches real browser
-parsing behaviour exactly, not a bug relative to any spec.
+**The v0.8.0 parity milestone.** The original translation work brought
+every one of the eleven ported commands to verified feature parity with
+the compiled Python originals — checked via the shared `selftest` suite
+plus direct side-by-side behavioural testing on live fixtures, and
+`roles` in particular against a battery of dedicated stress fixtures
+covering every classifier (Go, Markdown, Python, YAML, HTML) rather
+than just the language-vocabulary sampler most other testing here uses.
+Eight real, shared bugs were found this way and fixed in **both**
+languages together (fixing only the Go side would have broken parity
+rather than restored it) — full writeups, fixtures, and ground-truth
+verification for each are in `CHANGELOG.md`: `roles`'s Go backtick-
+string and block-comment tracking, its Markdown fence and inline-code
+matching, Python's triple-quote escape handling, YAML's comment
+detection, and `addwave`'s item-range formatting.
+`_html_embedded_spans`'s one known `</script>` ambiguity is a
+deliberate, documented exception — it matches real browser parsing
+behaviour exactly, not a bug relative to any spec.
+
+Everything built since that milestone (`badcode`, `board`, `workspace`,
+`provenance`, and the write-path provenance gating covered in
+`repoman-088-provenance.md`) is Go-only from the start, with no Python
+original to compare against — verified by its own `selftest` coverage
+and, where the mechanism directly caught a real incident, the incident
+itself, not by parity testing.
 
 ## License
 

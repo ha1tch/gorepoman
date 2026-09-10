@@ -49,6 +49,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ha1tch/gorepoman/pkg/ed"
 	"github.com/ha1tch/gorepoman/pkg/roles"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
@@ -60,13 +61,36 @@ type Pattern struct {
 	Source string // which config file this pattern came from
 }
 
-// Match is one place a Pattern was found.
+// Match is one place a Pattern was found. Provenance is T-04: whether
+// the matched FILE (not the specific matched line -- ed's own
+// FileProvenance records a whole-file hash, not a per-line one, so
+// per-line provenance is not a distinction the journal can make) has
+// a repoman journal record whose hash matches its current content
+// ("repoman", meaning the current content genuinely was written
+// through repoman's own edit paths), no journal record for this path
+// at all ("no provenance record", meaning this file has never been
+// touched by ed/strreplace -- the match arrived however the whole
+// file did, entirely outside repoman's view), or a journal record
+// that no longer matches current content ("stale provenance record",
+// meaning repoman wrote this file at some point but it has since
+// changed outside repoman's write paths too -- a provenance package
+// Mismatch/Missing in its own right, surfaced here rather than
+// silently folded into either of the other two labels).
 type Match struct {
-	Pattern Pattern
-	File    string
-	Line    int
-	Snippet string
+	Pattern    Pattern
+	File       string
+	Line       int
+	Snippet    string
+	Provenance string
 }
+
+// Provenance label constants for Match.Provenance -- exported so a
+// caller can branch on them without restating the literal strings.
+const (
+	ProvenanceRepoman = "repoman"                 // current content matches repoman's own record
+	ProvenanceNone    = "no provenance record"    // never touched by repoman at all
+	ProvenanceStale   = "stale provenance record" // repoman wrote it once; it has since diverged
+)
 
 type jsonEntry struct {
 	Pattern string `json:"pattern"`
@@ -153,6 +177,43 @@ func Check(paths []string, patterns []Pattern) []Match {
 		lowerPatterns[i] = strings.ToLower(p.Text)
 	}
 
+	// T-04: provenance annotation. The journal's own FileProvenance
+	// keys are an exact, unmodified copy of whatever path string
+	// ed/strreplace were invoked with (ed.Edit.File = path, no
+	// filepath.Abs/Clean normalization anywhere in this codebase) --
+	// which can itself be relative or absolute depending on how the
+	// caller invoked ed. roles.Expand's own output has the same
+	// property: relative if paths was relative (the standalone
+	// `badcode check` CLI, default "."), absolute if paths was
+	// absolute (relcore's own preflight passes the absolute project
+	// root). The exact string is therefore tried first -- it matches
+	// whenever both the tracking write and this scan used the same
+	// form, which is the overwhelmingly common case (both invoked the
+	// same way, from the same place). Only if that misses is the path
+	// re-expressed relative to cwd and retried, covering the case
+	// where one side used a relative path and the other an absolute
+	// one for the same file. A file outside cwd's own tree (Rel fails)
+	// simply falls back to the original lookup's result.
+	j := ed.LoadJournal()
+	cwd, cwdErr := os.Getwd()
+	provenanceFor := func(f string) string {
+		st := ed.CheckProvenance(j, f)
+		if !st.Tracked && cwdErr == nil {
+			if rel, err := filepath.Rel(cwd, f); err == nil && rel != f {
+				if relSt := ed.CheckProvenance(j, rel); relSt.Tracked {
+					st = relSt
+				}
+			}
+		}
+		if !st.Tracked {
+			return ProvenanceNone
+		}
+		if st.Mismatch || st.Missing {
+			return ProvenanceStale
+		}
+		return ProvenanceRepoman
+	}
+
 	var matches []Match
 	for _, f := range roles.Expand(paths) {
 		b, err := os.ReadFile(f)
@@ -162,6 +223,7 @@ func Check(paths []string, patterns []Pattern) []Match {
 		if looksBinary(b) {
 			continue
 		}
+		fileProvenance := provenanceFor(f)
 		text := string(b)
 		lines := strings.Split(text, "\n")
 		// joined is text with every newline BYTE REMOVED (not replaced
@@ -198,10 +260,11 @@ func Check(paths []string, patterns []Pattern) []Match {
 						snippet = snippet[:120]
 					}
 					matches = append(matches, Match{
-						Pattern: patterns[i],
-						File:    f,
-						Line:    lineNo + 1,
-						Snippet: snippet,
+						Pattern:    patterns[i],
+						File:       f,
+						Line:       lineNo + 1,
+						Snippet:    snippet,
+						Provenance: fileProvenance,
 					})
 				}
 			}
@@ -235,6 +298,7 @@ func Check(paths []string, patterns []Pattern) []Match {
 					Line:    startLine,
 					Snippet: fmt.Sprintf("[spans lines %d-%d, pattern split across a line wrap] %s",
 						startLine, endLine, snippet),
+					Provenance: fileProvenance,
 				})
 			}
 		}
@@ -269,6 +333,14 @@ func Run(argv []string) int {
 		fmt.Println("configured in the local badcode.txt/badcode.json config --")
 		fmt.Println("never stored in this or any other repository. Refuses (exit 1)")
 		fmt.Println("if any pattern is found anywhere in the scanned files.")
+		fmt.Println()
+		fmt.Println("Each reported match is annotated with its file's provenance status")
+		fmt.Println("(T-04): \"repoman\" if the current content matches repoman's own")
+		fmt.Println("journal record for that file, \"no provenance record\" if the file has")
+		fmt.Println("never been touched by ed/strreplace, or \"stale provenance record\" if")
+		fmt.Println("repoman wrote it at some point but it has since changed outside")
+		fmt.Println("repoman's own write paths too -- no adjacent secret-scanning tool can")
+		fmt.Println("make this distinction, since none of them own the editing layer.")
 		fmt.Println()
 		fmt.Println("positional arguments:")
 		fmt.Println("  path        file(s)/directory(ies) to scan (default: .)")
@@ -314,8 +386,8 @@ func Run(argv []string) int {
 		if m.Pattern.Reason != "" {
 			reason = fmt.Sprintf(" (%s)", m.Pattern.Reason)
 		}
-		fmt.Fprintf(os.Stderr, "ERROR badcode-match: pattern %q%s found in %s:%d: %s\n",
-			m.Pattern.Text, reason, m.File, m.Line, m.Snippet)
+		fmt.Fprintf(os.Stderr, "ERROR badcode-match: pattern %q%s found in %s:%d [%s]: %s\n",
+			m.Pattern.Text, reason, m.File, m.Line, m.Provenance, m.Snippet)
 	}
 	fmt.Printf("BADCODE CHECK FAIL: %d match(es)\n", len(matches))
 	return 1

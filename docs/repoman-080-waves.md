@@ -101,3 +101,42 @@ Both display forms — ASCII and HTML — read the exact same persisted
 visibility state, so a wave hidden from one can never appear in the other
 by accident; there's one source of truth for what's shown, not two
 independently-tracked notions of it.
+
+**`--html PATH` is superseded by `--show --format html`** (writes to
+stdout, same shape every other command's html output uses — see
+`repoman-055-format.md`) — kept working, not removed, since real usage
+may already depend on it writing a file directly:
+
+```
+$ repoman waveprogress --show --format html > out.html
+```
+
+`--show` and `--check` both take `--format json` too, for anything
+reading wave progress mechanically:
+
+```
+$ repoman waveprogress --show --format json
+{
+  "tool": "waveprogress",
+  "object": "waveprogress-report",
+  "schema_version": 1,
+  "data": {
+    "waves": [
+      {
+        "id": "1", "name": "connection pool rewrite", "pct": 0,
+        "has_partial": false, "done": 0, "total": 2,
+        "debt": [], "blockers": []
+      }
+    ],
+    "overall_done": 0, "overall_total": 2, "overall_pct": 0,
+    "hidden_count": 0
+  },
+  "generated_at": "2026-08-30T14:00:00Z"
+}
+```
+
+`debt` and `blockers` carry the same information the ASCII and HTML
+views already show as extra lines under a wave — real arrays a
+consumer can act on, not text to re-parse. `check --format json`
+returns `{"stale": true|false}`, with the same non-zero-when-stale
+exit code the text form has always used.

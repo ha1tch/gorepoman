@@ -15,14 +15,17 @@
 //     default to empty, so a consumer that never sets them sees
 //     exactly the behaviour of a project with no waves configured
 //     yet: no summary line to regenerate, nothing to break.
-//   - The id-format handling reads the same id_prefix / id_separator
-//     / legacy_id_prefix / legacy_id_separator keys pkg/register
-//     reads, generalizing the same forward-only mid-project
-//     prefix-migration need pkg/register was built for --
-//     re-implemented here rather than imported, preserving this
-//     package's own original design choice (from wave_progress.py) to
-//     remain free of a cross-package dependency for one shared regex
-//     fragment.
+//   - The id-format handling reads the same id_prefix / id_separator /
+//     legacy_id_prefix / legacy_id_separator / id_namespaces keys
+//     pkg/register reads, generalizing the same idea to any number of
+//     permanently coexisting namespaces (not just a one-time legacy
+//     migration) -- re-implemented here rather than imported from
+//     pkg/register, preserving this package's own original design
+//     choice (from wave_progress.py) to remain free of a cross-package
+//     dependency on pkg/register specifically for this one shared
+//     regex fragment; config.Config.EffectiveIDNamespaces (pkg/config,
+//     already a dependency here) is what both packages now build that
+//     fragment from.
 //
 // Why this exists (xolu's own original rationale, unchanged): a
 // hand-maintained progress summary drifts from the data it
@@ -83,6 +86,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/report"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
@@ -144,38 +148,83 @@ func newEnv() (*env, error) {
 	return e, nil
 }
 
+// sortedIDNamespaces returns cfg's recognised namespaces, longest
+// prefix+separator first so a namespace whose prefix is a leading
+// substring of another's (e.g. "T-" vs "TB-") never misclassifies the
+// longer one's ids -- shared by every function below that builds a
+// pattern or parses an id against these namespaces.
+func sortedIDNamespaces(cfg config.Config) []config.EffectiveIDNamespace {
+	nss := cfg.EffectiveIDNamespaces()
+	sort.SliceStable(nss, func(i, j int) bool {
+		return len(nss[i].Prefix+nss[i].Separator) > len(nss[j].Prefix+nss[j].Separator)
+	})
+	return nss
+}
+
 func idAltPattern(cfg config.Config) string {
-	if cfg.LegacyIDPrefix != "" {
-		return "(?:" + regexp.QuoteMeta(cfg.IDPrefix) + regexp.QuoteMeta(cfg.IDSeparator) +
-			"|" + regexp.QuoteMeta(cfg.LegacyIDPrefix) + regexp.QuoteMeta(cfg.LegacyIDSeparator) + `)\d+`
+	nss := sortedIDNamespaces(cfg)
+	if len(nss) == 1 {
+		return regexp.QuoteMeta(nss[0].Prefix) + regexp.QuoteMeta(nss[0].Separator) + `\d+`
 	}
-	return regexp.QuoteMeta(cfg.IDPrefix) + regexp.QuoteMeta(cfg.IDSeparator) + `\d+`
+	parts := make([]string, len(nss))
+	for i, ns := range nss {
+		parts[i] = regexp.QuoteMeta(ns.Prefix) + regexp.QuoteMeta(ns.Separator)
+	}
+	return "(?:" + strings.Join(parts, "|") + `)\d+`
 }
 
 func prefixAltPattern(cfg config.Config) string {
-	if cfg.LegacyIDPrefix != "" {
-		return "(?:" + regexp.QuoteMeta(cfg.IDPrefix) + regexp.QuoteMeta(cfg.IDSeparator) +
-			"|" + regexp.QuoteMeta(cfg.LegacyIDPrefix) + regexp.QuoteMeta(cfg.LegacyIDSeparator) + ")"
+	nss := sortedIDNamespaces(cfg)
+	if len(nss) == 1 {
+		return regexp.QuoteMeta(nss[0].Prefix) + regexp.QuoteMeta(nss[0].Separator)
 	}
-	return regexp.QuoteMeta(cfg.IDPrefix) + regexp.QuoteMeta(cfg.IDSeparator)
+	parts := make([]string, len(nss))
+	for i, ns := range nss {
+		parts[i] = regexp.QuoteMeta(ns.Prefix) + regexp.QuoteMeta(ns.Separator)
+	}
+	return "(?:" + strings.Join(parts, "|") + ")"
 }
 
-// idNum returns the numeric portion of an id, primary or legacy
-// shape. Re-implemented here rather than calling into pkg/register,
-// preserving wave_progress.py's own original design choice to remain
-// free of a cross-package dependency for one shared regex fragment.
-func idNum(tid string, cfg config.Config) (int, error) {
-	primary := cfg.IDPrefix + cfg.IDSeparator
-	if strings.HasPrefix(tid, primary) {
-		return strconv.Atoi(tid[len(primary):])
-	}
-	if cfg.LegacyIDPrefix != "" {
-		legacy := cfg.LegacyIDPrefix + cfg.LegacyIDSeparator
-		if strings.HasPrefix(tid, legacy) {
-			return strconv.Atoi(tid[len(legacy):])
+// idParsed mirrors pkg/register's own idParsed (not imported, per
+// this package's design choice above): the numeric part of an id
+// plus which counter group it belongs to, so ids from different
+// namespaces sort deterministically instead of tying on Num alone.
+type idParsed struct {
+	Num      int
+	GroupKey string
+}
+
+// idNum returns the numeric portion of an id and which namespace's
+// counter group it belongs to, trying the longest prefix+separator
+// first (see sortedIDNamespaces).
+func idNum(tid string, cfg config.Config) (idParsed, error) {
+	for _, ns := range sortedIDNamespaces(cfg) {
+		full := ns.Prefix + ns.Separator
+		if strings.HasPrefix(tid, full) {
+			n, err := strconv.Atoi(tid[len(full):])
+			if err != nil {
+				return idParsed{}, err
+			}
+			return idParsed{Num: n, GroupKey: ns.GroupKey}, nil
 		}
 	}
-	return 0, fmt.Errorf("unrecognized id format: %q", tid)
+	return idParsed{}, fmt.Errorf("unrecognized id format: %q", tid)
+}
+
+// idLess orders two ids the same way pkg/register's own idLess does:
+// ids sharing a counter group sort by number among themselves; ids
+// from different groups sort by group key first ("" -- primary/
+// legacy -- before any other namespace's own prefix).
+func idLess(a, b string, cfg config.Config) bool {
+	pa, errA := idNum(a, cfg)
+	pb, errB := idNum(b, cfg)
+	if errA != nil || errB != nil {
+		return a < b
+	}
+	if pa.GroupKey != pb.GroupKey {
+		return pa.GroupKey < pb.GroupKey
+	}
+	return pa.Num < pb.Num
 }
 
 // isVisible: absent entry = visible. This is the ONLY place either
@@ -350,10 +399,8 @@ func (e *env) blockersByWave(fullText string, waves []wave) map[string][]blocker
 		for t := range scope {
 			items = append(items, t)
 		}
-		sort.Slice(items, func(i, j int) bool {
-			ni, _ := idNum(items[i], e.cfg)
-			nj, _ := idNum(items[j], e.cfg)
-			return ni < nj
+		sort.SliceStable(items, func(i, j int) bool {
+			return idLess(items[i], items[j], e.cfg)
 		})
 
 		byBlocker := map[string][]string{}
@@ -678,7 +725,14 @@ Flags:
   --check             Exit non-zero if the summary is stale (CI use)
                        without writing anything.
   --html PATH         Render the same view as --show to an HTML
-                       file at PATH instead of ASCII.
+                       file at PATH instead of ASCII. Superseded by
+                       --show --format html (writes to stdout, same
+                       shape every other reporting command uses) --
+                       kept working, not removed.
+  --format FORMAT      For --show/--check: text (default), json, or
+                       html. json is a stable, queryfy-validated data
+                       contract; html is a self-contained document in
+                       gorepoman's own visual style, written to stdout.
   --hide WAVE_ID       Persist a wave as hidden from --show/--html
                        (its work still counts toward the overall
                        total -- visibility is a display concern,
@@ -697,6 +751,7 @@ with an unrelated-looking error.
 // Run implements `repoman waveprogress [flags]`.
 func Run(argv []string) int {
 	argv = webhelp.NormalizeBriefFirst(argv)
+	format, argv := report.ExtractFormat(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Print(waveprogressHelp)
@@ -792,17 +847,56 @@ func Run(argv []string) int {
 	}
 
 	if show {
-		fmt.Println(newTable)
-		fmt.Println()
-		fmt.Println(newOverall)
-		return 0
+		switch format {
+		case "text":
+			fmt.Println(newTable)
+			fmt.Println()
+			fmt.Println(newOverall)
+			return 0
+		case "json":
+			data := e.buildReport(visibleWaves, allWaves, text)
+			if err := ValidateReport(data); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			return report.EmitOrErr(report.EmitJSON(os.Stdout, "waveprogress", "waveprogress-report", SchemaVersion, data))
+		case "html":
+			data := e.buildReport(visibleWaves, allWaves, text)
+			body, err := renderReportHTML(data)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			return report.EmitOrErr(report.EmitHTML(os.Stdout, "wave progress", "waveprogress", "waveprogress-report", body))
+		default:
+			fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+			return 1
+		}
 	}
 
 	tableRe := regexp.MustCompile(`(?s)(## 1\. Progress at a glance\n.*?` + "```" + `\n).*?(\n` + "```" + `\n)`)
 	loc := tableRe.FindStringSubmatchIndex(text)
 	if loc == nil {
-		fmt.Fprintln(os.Stderr, "could not find the '## 1. Progress at a glance' fenced block")
-		return 1
+		// B-05 fix: a fresh project's wave-tracking document may not
+		// have this section at all yet -- self-heal by inserting a
+		// minimal skeleton rather than refusing. Previously this left
+		// addwave's own prior writes (the new wave's table, plan
+		// paragraph, short name) sitting half-updated with the failure
+		// happening only on this later, separate check, and required
+		// knowing the exact skeleton shape to pre-seed by hand -- never
+		// stated in -h text or the docs, only recoverable from the
+		// selftest fixture.
+		skeleton := "## 1. Progress at a glance\n\n```\nplaceholder\n```\n\nOverall by item count: 0 of 0 items \u2248 **0%**\n\n"
+		insertAt := 0
+		if titleLoc := regexp.MustCompile(`(?m)^# .*\n\n?`).FindStringIndex(text); titleLoc != nil {
+			insertAt = titleLoc[1]
+		}
+		text = text[:insertAt] + skeleton + text[insertAt:]
+		loc = tableRe.FindStringSubmatchIndex(text)
+		if loc == nil {
+			fmt.Fprintln(os.Stderr, "internal error: inserted skeleton still did not match -- please report this")
+			return 1
+		}
 	}
 	newText := text[:loc[0]] + text[loc[2]:loc[3]] + newTable + text[loc[4]:loc[5]] + text[loc[1]:]
 
@@ -813,11 +907,30 @@ func Run(argv []string) int {
 	}
 	newText = overallRe.ReplaceAllLiteralString(newText, newOverall)
 
+	// B-04 fix: also regenerate each wave's own "**Wave N: k/n, status.**"
+	// line, not just section 1's fenced block. addwave writes this line
+	// once, when the wave is created, and nothing regenerated it after --
+	// it could read "0/4, not started" indefinitely while the table
+	// above it showed every item done and section 1 said 100%.
+	for _, w := range allWaves {
+		waveLineRe := regexp.MustCompile(`\*\*Wave ` + regexp.QuoteMeta(w.ID) + `: \d+/\d+, [^*]+\.\*\*`)
+		if waveLineRe.MatchString(newText) {
+			fresh := fmt.Sprintf("**Wave %s: %s/%d, %s.**", w.ID, formatG(w.DoneEquiv), w.Total, waveStatusWord(w))
+			newText = waveLineRe.ReplaceAllLiteralString(newText, fresh)
+		}
+	}
+
 	if newText == text {
+		if check && format != "text" {
+			return emitCheckResult(format, CheckResult{Stale: false})
+		}
 		fmt.Println("wave_progress: already up to date")
 		return 0
 	}
 	if check {
+		if format != "text" {
+			return emitCheckResult(format, CheckResult{Stale: true})
+		}
 		fmt.Println("wave_progress: wave-tracking document is stale -- run without --check to regenerate")
 		return 1
 	}
@@ -883,6 +996,21 @@ func padLeft(s string, width int) string {
 // pyRound rounds half to even, matching Python 3's built-in round()
 // -- used wherever the original computes a display percentage, so
 // exact-.5 boundaries render identically to the Python tool.
+// waveStatusWord mirrors the phrase addwave hardcodes as "not started"
+// for a brand-new wave, extended to the two states a wave actually
+// passes through afterward -- used by the B-04 fix above to keep a
+// wave's own summary line honest as it progresses.
+func waveStatusWord(w wave) string {
+	switch {
+	case w.DoneEquiv <= 0:
+		return "not started"
+	case w.DoneEquiv >= float64(w.Total) && w.Total > 0:
+		return "done"
+	default:
+		return "in progress"
+	}
+}
+
 func pyRound(x float64) int {
 	floor := math.Floor(x)
 	diff := x - floor

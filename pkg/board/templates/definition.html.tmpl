@@ -1,0 +1,28 @@
+{{if .Subtitle}}<p style="font-size:13px;color:var(--text-2);margin:0 0 1rem;">{{.Subtitle}}</p>{{end}}
+{{if .Legend}}<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem;">
+{{range .Legend}}<span style="font-size:11px;padding:3px 8px;border-radius:4px;background:var(--{{.Color}}-bg,var(--surface));color:var(--{{.Color}}-text,var(--text));">{{.Name}}</span>{{end}}
+</div>{{end}}
+<div style="display:grid;grid-template-columns:repeat({{len .Columns}},minmax(0,1fr));gap:14px;">
+{{range .Columns}}
+<div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--border);padding-bottom:6px;margin-bottom:8px;">
+  <span style="font-size:13px;font-weight:600;">{{.Label}}</span><span style="font-size:11px;color:var(--text-3);">{{len .Items}}</span>
+</div>
+{{if .Note}}<p style="font-size:11px;color:var(--text-3);margin:0 0 8px;">{{.Note}}</p>{{end}}
+{{range .Items}}
+<div style="background:var(--surface);border:0.5px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-2);"><span>{{.ID}}</span><span>{{.Project}}</span></div>
+  <div style="font-size:13px;margin-top:2px;">{{.Title}}</div>
+  {{if .Legend}}<div style="margin-top:4px;">{{range .Legend}}<span style="font-size:10px;color:var(--text-3);">{{.}} </span>{{end}}</div>{{end}}
+</div>
+{{end}}
+</div>
+{{end}}
+</div>
+{{if and (not .Overflow.Hidden) .Overflow.Items}}
+<div style="margin-top:1.25rem;border-top:1px solid var(--border);padding-top:10px;">
+<p style="font-size:12px;color:var(--text-2);margin:0 0 6px;">Overflow ({{len .Overflow.Items}})</p>
+{{range .Overflow.Items}}<div style="font-size:12px;padding:3px 0;">{{.ID}} · {{.Project}} · {{.Title}}</div>{{end}}
+</div>
+{{end}}
+{{if .Footer}}<p style="font-size:12px;color:var(--text-3);margin-top:1.25rem;border-top:0.5px solid var(--border);padding-top:10px;">{{.Footer}}</p>{{end}}

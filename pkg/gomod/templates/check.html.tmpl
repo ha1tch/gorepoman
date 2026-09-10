@@ -1,0 +1,11 @@
+<p style="font-size:13px;margin:0 0 1rem;">
+{{if not .ToolchainAvailable}}<span style="color:var(--warn-text);">toolchain unavailable &mdash; 0 checks performed</span>
+{{else if .OK}}<span style="color:var(--success);">OK</span>{{if .Warnings}}<span style="color:var(--text-2);"> ({{len .Warnings}} warning(s))</span>{{end}}
+{{else}}<span style="color:var(--warn-text);">FAIL &mdash; {{len .Errors}} error(s)</span>{{end}}
+</p>
+{{range .Errors}}
+<div style="font-size:12px;color:var(--warn-text);padding:5px 0;border-bottom:1px solid var(--border);">ERROR {{.}}</div>
+{{end}}
+{{range .Warnings}}
+<div style="font-size:12px;color:var(--text-2);padding:5px 0;border-bottom:1px solid var(--border);">WARN {{.}}</div>
+{{end}}

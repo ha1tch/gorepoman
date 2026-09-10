@@ -1,0 +1,15 @@
+<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;">
+{{range .Columns}}
+<div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--border);padding-bottom:6px;margin-bottom:8px;">
+  <span style="font-size:12px;font-weight:600;">{{.Status}} {{.Label}}</span><span style="font-size:11px;color:var(--text-3);">{{len .Items}}</span>
+</div>
+{{range .Items}}
+<div style="background:var(--surface);border:0.5px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:7px;">
+  <div style="font-size:11px;color:var(--text-2);">{{.ID}} · {{.Priority}} · {{.Theme}}</div>
+  <div style="font-size:12px;margin-top:2px;">{{.Title}}</div>
+</div>
+{{end}}
+</div>
+{{end}}
+</div>

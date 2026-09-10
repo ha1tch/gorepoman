@@ -154,6 +154,117 @@ func SelfTest() int {
 		return fail("9 undo --since a real mark with no later txns is a no-op", so+se)
 	}
 
-	fmt.Println("selftest: all 9 paths green")
+	// 10. append writes to true EOF, no handle needed, and journals.
+	beforeAppend := readFile()
+	so, se, code = run("ed", "append", "t.md", "--with", "ZAPPENDED\n")
+	if !(code == 0 && strings.HasSuffix(readFile(), "ZAPPENDED\n")) {
+		return fail("10 append writes to true EOF and journals", so+se+readFile())
+	}
+	if readFile() != beforeAppend+"ZAPPENDED\n" {
+		return fail("10 append writes to true EOF and journals", "existing content was disturbed: "+readFile())
+	}
+
+	// 11. undo restores the append exactly, same journal/undo path as apply.
+	so, se, code = run("ed", "undo")
+	if !(code == 0 && readFile() == beforeAppend) {
+		return fail("11 undo restores an append exactly", so+se+readFile())
+	}
+
+	// 12. prepend writes to true offset 0, no handle needed, and journals.
+	beforePrepend := readFile()
+	so, se, code = run("ed", "prepend", "t.md", "--with", "ZPREPENDED\n")
+	if !(code == 0 && strings.HasPrefix(readFile(), "ZPREPENDED\n")) {
+		return fail("12 prepend writes to true offset 0 and journals", so+se+readFile())
+	}
+	if readFile() != "ZPREPENDED\n"+beforePrepend {
+		return fail("12 prepend writes to true offset 0 and journals", "existing content was disturbed: "+readFile())
+	}
+
+	// 13. undo restores the prepend exactly.
+	so, se, code = run("ed", "undo")
+	if !(code == 0 && readFile() == beforePrepend) {
+		return fail("13 undo restores a prepend exactly", so+se+readFile())
+	}
+
+	// 14. append/prepend refuse a missing file rather than creating one.
+	so, se, code = run("ed", "append", "does-not-exist.md", "--with", "x")
+	if !(code == 1 && strings.Contains(se, "REFUSED")) {
+		return fail("14 append refuses a missing file rather than creating one", so+se)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "does-not-exist.md")); statErr == nil {
+		return fail("14 append refuses a missing file rather than creating one", "file was created anyway")
+	}
+
+	// 15. insert --after requires a fresh handle and leaves the matched span untouched.
+	// (searches for "gamma", not "beta": test 4's forced sub already replaced every
+	// "beta" with "gamma" earlier in this same synthetic file, and nothing before
+	// this point restores that substitution -- only test 5's undo runs, and that
+	// undoes test 4's sub itself, restoring "alpha"/"omega", not "beta".)
+	so, _, _ = run("ed", "find", "gamma", "t.md")
+	iLines := strings.Split(strings.TrimRight(so, "\n"), "\n")
+	if len(iLines) == 0 {
+		return fail("15 insert --after requires a fresh handle", so)
+	}
+	iHandleFields := strings.Fields(iLines[0])
+	if len(iHandleFields) == 0 {
+		return fail("15 insert --after requires a fresh handle", so)
+	}
+	iHandle := iHandleFields[0]
+	beforeInsertAfter := readFile()
+	so, se, code = run("ed", "insert", iHandle, "--after", "--with", "-INSERTED-AFTER-")
+	if !(code == 0 && strings.Contains(readFile(), "gamma-INSERTED-AFTER-")) {
+		return fail("15 insert --after lands immediately after the matched span, matched text untouched", so+se+readFile())
+	}
+
+	// 16. undo restores an insert --after exactly.
+	so, se, code = run("ed", "undo")
+	if !(code == 0 && readFile() == beforeInsertAfter) {
+		return fail("16 undo restores an insert --after exactly", so+se+readFile())
+	}
+
+	// 17. insert --before lands immediately before the matched span, matched text untouched.
+	so, _, _ = run("ed", "find", "gamma", "t.md")
+	iLines = strings.Split(strings.TrimRight(so, "\n"), "\n")
+	iHandleFields = strings.Fields(iLines[0])
+	iHandle = iHandleFields[0]
+	so, se, code = run("ed", "insert", iHandle, "--before", "--with", "-INSERTED-BEFORE-")
+	if !(code == 0 && strings.Contains(readFile(), "-INSERTED-BEFORE-gamma")) {
+		return fail("17 insert --before lands immediately before the matched span, matched text untouched", so+se+readFile())
+	}
+	so, se, code = run("ed", "undo")
+	if code != 0 {
+		return fail("17 undo after insert --before", so+se)
+	}
+
+	// 18. insert refuses a stale handle, same as apply.
+	so, _, _ = run("ed", "find", "gamma", "t.md")
+	iLines = strings.Split(strings.TrimRight(so, "\n"), "\n")
+	iHandleFields = strings.Fields(iLines[0])
+	staleHandle := iHandleFields[0]
+	run("ed", "insert", staleHandle, "--after", "--with", "-FIRST-")
+	so, se, code = run("ed", "insert", staleHandle, "--after", "--with", "-SECOND-")
+	if !(code == 1 && strings.Contains(se, "stale")) {
+		return fail("18 insert refuses a stale handle", so+se)
+	}
+	run("ed", "undo")
+
+	// 19. insert refuses when both --after and --before are given, or neither.
+	so, _, _ = run("ed", "find", "gamma", "t.md")
+	iLines = strings.Split(strings.TrimRight(so, "\n"), "\n")
+	iHandleFields = strings.Fields(iLines[0])
+	bothHandle := iHandleFields[0]
+	so, se, code = run("ed", "insert", bothHandle, "--after", "--before", "--with", "-X-")
+	if !(code == 1 && strings.Contains(se, "exactly one")) {
+		return fail("19 insert refuses --after and --before together", so+se)
+	}
+	so, se, code = run("ed", "insert", bothHandle, "--with", "-X-")
+	if !(code == 1 && strings.Contains(se, "exactly one")) {
+		return fail("19 insert refuses neither --after nor --before", so+se)
+	}
+	if readFile() != beforeInsertAfter {
+		return fail("19 insert refuses malformed --after/--before combos, writes nothing", readFile())
+	}
+
+	fmt.Println("selftest: all 19 paths green")
 	return 0
 }

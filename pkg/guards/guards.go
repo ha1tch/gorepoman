@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/gorepoman/pkg/config"
+	"github.com/ha1tch/gorepoman/pkg/report"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
@@ -59,8 +60,22 @@ func lastLineOf(block string, lastRe *regexp.Regexp) string {
 // carry multiple dated addenda ("DATE ... Previous: OLDER-DATE ..."),
 // and lexicographic comparison of "YYYY-MM-DD" strings is equivalent to
 // chronological comparison, so position in the text never matters.
+// neverRe matches the word "never" case-insensitively, as a whole
+// word -- so it catches "NEVER", "Never — written 2026-09-06", etc.,
+// without also matching it as a substring of some other word.
+var neverRe = regexp.MustCompile(`(?i)\bnever\b`)
+
 func lastDateOf(lastLine string) string {
 	if lastLine == "" {
+		return ""
+	}
+	// B-07 fix: "never" is authoritative regardless of any date also
+	// present on the same line. A guard written today legitimately
+	// records "never — written 2026-09-06" -- the date is when the
+	// guard was ADDED, not when it was exercised, and treating it as
+	// an exercise record let a guard that has literally never run go
+	// quiet in `guards stale`.
+	if neverRe.MatchString(lastLine) {
 		return ""
 	}
 	dates := dateRe.FindAllString(lastLine, -1)
@@ -301,8 +316,9 @@ func (e *env) cmdStale(guards []guard, since string) int {
 // Run implements the `repoman guards <list|show|handoff|record|stale> ...` CLI.
 func Run(args []string) int {
 	args = webhelp.NormalizeBriefFirst(args)
+	format, args := report.ExtractFormat(args)
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: repoman guards <list|show|handoff|record|stale> ...")
+		fmt.Fprintln(os.Stderr, "Usage: repoman guards <list|show|handoff|record|stale> ... [--format text|json|html]")
 		return 1
 	}
 	if args[0] == "-h" || args[0] == "--help" {
@@ -386,14 +402,66 @@ func Run(args []string) int {
 	rest := args[1:]
 	switch cmd {
 	case "list":
-		return e.cmdList(guards)
+		switch format {
+		case "text":
+			return e.cmdList(guards)
+		case "json":
+			data := e.toSummaries(guards)
+			if err := ValidateList(data); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			return report.EmitOrErr(report.EmitJSON(os.Stdout, "guards", "guards-list", SchemaVersion, data))
+		case "html":
+			body, err := renderListHTML(e.toSummaries(guards))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			return report.EmitOrErr(report.EmitHTML(os.Stdout, "guards list", "guards", "guards-list", body))
+		default:
+			fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+			return 1
+		}
 
 	case "show":
 		if len(rest) < 1 {
 			fmt.Fprintln(os.Stderr, "show requires a guard id")
 			return 1
 		}
-		return e.cmdShow(guards, rest[0])
+		switch format {
+		case "text":
+			return e.cmdShow(guards, rest[0])
+		case "json", "html":
+			var found *guard
+			for i := range guards {
+				if guards[i].gid == rest[0] {
+					found = &guards[i]
+					break
+				}
+			}
+			if found == nil {
+				fmt.Fprintf(os.Stderr, "no such guard: %s\n", rest[0])
+				return 1
+			}
+			detail := e.toDetail(*found)
+			if format == "json" {
+				if err := ValidateDetail(detail); err != nil {
+					fmt.Fprintf(os.Stderr, "error: %v\n", err)
+					return 1
+				}
+				return report.EmitOrErr(report.EmitJSON(os.Stdout, "guards", "guards-detail", SchemaVersion, detail))
+			}
+			body, err := renderDetailHTML(detail)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			return report.EmitOrErr(report.EmitHTML(os.Stdout, "guard "+detail.ID, "guards", "guards-detail", body))
+		default:
+			fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+			return 1
+		}
 
 	case "handoff":
 		return e.cmdHandoff(guards, rest)
@@ -444,7 +512,36 @@ func Run(args []string) int {
 		if since == "" {
 			since = e.previousReleaseDate()
 		}
-		return e.cmdStale(guards, since)
+		switch format {
+		case "text":
+			return e.cmdStale(guards, since)
+		case "json":
+			data := e.computeStale(guards, since)
+			if err := ValidateStale(data); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			ec := report.EmitOrErr(report.EmitJSON(os.Stdout, "guards", "guards-stale", SchemaVersion, data))
+			if ec == 0 && !data.AllCurrent {
+				return 1
+			}
+			return ec
+		case "html":
+			data := e.computeStale(guards, since)
+			body, err := renderStaleHTML(data)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				return 1
+			}
+			ec := report.EmitOrErr(report.EmitHTML(os.Stdout, "guards stale", "guards", "guards-stale", body))
+			if ec == 0 && !data.AllCurrent {
+				return 1
+			}
+			return ec
+		default:
+			fmt.Fprintf(os.Stderr, "unknown format %q (want text, json, or html)\n", format)
+			return 1
+		}
 
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)

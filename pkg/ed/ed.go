@@ -40,10 +40,24 @@ type Evicted struct {
 	Anchors map[string]string `json:"anchors"`
 }
 
+// FileProvenance records the sha256 of one journal-tracked file's
+// full content, as of the last repoman-mediated write to it --
+// T-01's actual detection primitive. Deliberately NOT tied to a
+// specific Txn: a Txn can be evicted (MaxTxns/MaxBytes) while the
+// file it touched is still current and still worth checking, and
+// undo (which removes a Txn rather than adding one) still needs
+// somewhere to record the hash of the content it just restored.
+type FileProvenance struct {
+	Hash   string `json:"hash"`
+	At     string `json:"at"`
+	Reason string `json:"reason,omitempty"` // set only by Sanction (T-02); a normal repoman-mediated write never sets this -- it records a fresh, unremarkable hash instead
+}
+
 type Journal struct {
-	Txns    []Txn          `json:"txns"`
-	Marks   map[string]int `json:"marks"`
-	Evicted Evicted        `json:"evicted"`
+	Txns           []Txn                     `json:"txns"`
+	Marks          map[string]int            `json:"marks"`
+	Evicted        Evicted                   `json:"evicted"`
+	FileProvenance map[string]FileProvenance `json:"file_provenance,omitempty"`
 }
 
 func journalPath() string {
@@ -69,6 +83,9 @@ func LoadJournal() Journal {
 	}
 	if j.Evicted.Anchors == nil {
 		j.Evicted.Anchors = make(map[string]string)
+	}
+	if j.FileProvenance == nil {
+		j.FileProvenance = make(map[string]FileProvenance)
 	}
 	return j
 }
@@ -148,12 +165,131 @@ func Record(j *Journal, edits []Edit, label string) {
 		Label: label,
 		Edits: edits,
 	})
+	recordProvenance(j, edits)
 	SaveJournal(j)
+}
+
+// recordProvenance hashes the CURRENT on-disk content of every
+// unique file named in edits and stores it in j.FileProvenance --
+// called only after the caller has already written the file (every
+// call site does: os.WriteFile then Record, or the equivalent
+// os.Rename-based atomic write in strreplace), so this always reads
+// back exactly what was just written, not a stale in-memory copy.
+// A read failure is silently skipped rather than aborting the
+// journal write that already succeeded -- provenance tracking must
+// never be the reason a real edit fails to record.
+func recordProvenance(j *Journal, edits []Edit) {
+	if j.FileProvenance == nil {
+		j.FileProvenance = make(map[string]FileProvenance)
+	}
+	seen := make(map[string]bool)
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	for _, e := range edits {
+		if seen[e.File] {
+			continue
+		}
+		seen[e.File] = true
+		b, err := os.ReadFile(e.File)
+		if err != nil {
+			continue
+		}
+		h := sha256.Sum256(b)
+		j.FileProvenance[e.File] = FileProvenance{Hash: fmt.Sprintf("%x", h), At: now}
+	}
+}
+
+// ProvenanceStatus is CheckProvenance's plain-facts result -- deliberately
+// not the provenance package's own Mismatch type, since ed cannot import
+// provenance (provenance already imports ed for Journal/LoadJournal; the
+// reverse would be a cycle). This lives in ed because ed's own write
+// paths (T-31: apply, sub, append/prepend, undo) are the actual callers
+// that need to refuse a write before it lands on stale content -- the
+// provenance package's Check/CheckOne wrap this same primitive for the
+// on-demand `provenance check` CLI and its own Mismatch reporting.
+type ProvenanceStatus struct {
+	Tracked     bool // false: no provenance recorded for this path yet
+	Mismatch    bool // true: recorded hash does not match current content
+	Missing     bool // true: path is tracked but no longer exists
+	RecordedAt  string
+	RecordedHex string
+	CurrentHex  string
+}
+
+// CheckProvenance compares path's current on-disk content against j's
+// recorded hash for it, if any. A path with no recorded provenance
+// (never touched by repoman) returns Tracked: false and is never a
+// reason to refuse -- this check has nothing to compare against.
+func CheckProvenance(j Journal, path string) ProvenanceStatus {
+	fp, tracked := j.FileProvenance[path]
+	if !tracked {
+		return ProvenanceStatus{Tracked: false}
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ProvenanceStatus{Tracked: true, Missing: true, RecordedAt: fp.At, RecordedHex: fp.Hash}
+	}
+	h := sha256.Sum256(b)
+	current := fmt.Sprintf("%x", h)
+	if current != fp.Hash {
+		return ProvenanceStatus{Tracked: true, Mismatch: true, RecordedAt: fp.At, RecordedHex: fp.Hash, CurrentHex: current}
+	}
+	return ProvenanceStatus{Tracked: true}
+}
+
+// Sanction is T-02: the only way to clear a provenance mismatch
+// without redoing the edit through repoman. It re-syncs path's
+// recorded hash to its CURRENT on-disk content -- accepting whatever
+// is there now as the new known-good state -- and records reason
+// alongside the hash at the moment of sanction, exactly as T-02's own
+// register entry specifies. reason is mandatory (refused if blank):
+// this is a deliberate human override of a safety check, and the
+// audit trail is the entire point, not an optional courtesy.
+//
+// Deliberately narrow: refuses unless CheckProvenance currently
+// reports a real Mismatch. Sanctioning a path with no mismatch (never
+// tracked, or already matching) would silently do nothing meaningful
+// and makes the command a confusing no-op; sanctioning a Missing path
+// is refused too -- there is no current content to certify, so
+// restoring the file (or accepting its absence some other way) has to
+// come first.
+func Sanction(path, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		return fmt.Errorf("REFUSED: --reason is mandatory. Nothing sanctioned.")
+	}
+	j := LoadJournal()
+	st := CheckProvenance(j, path)
+	if !st.Mismatch {
+		if st.Missing {
+			return fmt.Errorf("REFUSED: %s no longer exists -- nothing to sanction (restore it, or its absence needs a different remedy)", path)
+		}
+		return fmt.Errorf("REFUSED: no provenance mismatch recorded for %s -- nothing to sanction", path)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("REFUSED: %s: %v", path, err)
+	}
+	h := sha256.Sum256(b)
+	if j.FileProvenance == nil {
+		j.FileProvenance = make(map[string]FileProvenance)
+	}
+	j.FileProvenance[path] = FileProvenance{
+		Hash:   fmt.Sprintf("%x", h),
+		At:     time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		Reason: reason,
+	}
+	return SaveJournal(&j)
 }
 
 func parseHandle(h string) (string, int, int, string, error) {
 	parts := strings.Split(h, ":")
 	if len(parts) < 3 {
+		// B-08: give a specific, actionable message for the common
+		// // mistake of copying only the trailing hash off find's output
+		// instead of the full "file:start-end:hash" handle, rather than
+		// the same generic "malformed handle" for every kind of mistake.
+		if len(parts) == 1 && isLikelyBareHash(h) {
+			return "", 0, 0, "", fmt.Errorf("%q looks like a bare hash, not a full handle -- apply needs the complete file:start-end:hash string find printed, not just the trailing hash", h)
+		}
 		return "", 0, 0, "", fmt.Errorf("malformed handle %q; expected file:start-end:hash", h)
 	}
 	hash := parts[len(parts)-1]
@@ -172,7 +308,22 @@ func parseHandle(h string) (string, int, int, string, error) {
 	return path, s, e, hash, nil
 }
 
-func revertTxn(t Txn) error {
+// isLikelyBareHash reports whether s looks like just the 8-hex-char
+// SpanHash a handle ends with, rather than a real path (which would
+// contain a slash, a dot, or non-hex letters in virtually every case).
+func isLikelyBareHash(s string) bool {
+	if len(s) < 4 || len(s) > 16 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func revertTxn(j *Journal, t Txn) error {
 	perFile := make(map[string][]Edit)
 	for _, e := range t.Edits {
 		perFile[e.File] = append(perFile[e.File], e)
@@ -183,6 +334,9 @@ func revertTxn(t Txn) error {
 		b, err := os.ReadFile(fname)
 		if err != nil {
 			return fmt.Errorf("%s no longer exists", fname)
+		}
+		if st := CheckProvenance(*j, fname); st.Mismatch || st.Missing {
+			return fmt.Errorf("%s was edited outside repoman since %s -- run `repoman provenance check` for details; undo refuses to revert on top of an unrecorded change", fname, st.RecordedAt)
 		}
 		text := string(b)
 
@@ -203,25 +357,30 @@ func revertTxn(t Txn) error {
 	for p, text := range staged {
 		os.WriteFile(p, []byte(text), 0644)
 	}
+	var touched []Edit
+	for p := range staged {
+		touched = append(touched, Edit{File: p})
+	}
+	recordProvenance(j, touched)
 	return nil
 }
 
 func Run(args []string) int {
 	args = webhelp.NormalizeBriefFirst(args)
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: repoman ed <find|apply|sub|undo|mark|log|selftest> ...")
+		fmt.Fprintln(os.Stderr, "Usage: repoman ed <find|apply|append|prepend|insert|sub|undo|mark|log|selftest> ...")
 		return 1
 	}
 
 	cmd := args[0]
 	switch cmd {
 	case "-h", "--help":
-		fmt.Println("usage: repoman ed [-h] {find,apply,sub,undo,mark,log,selftest} ...")
+		fmt.Println("usage: repoman ed [-h] {find,apply,append,prepend,insert,sub,undo,mark,log,selftest} ...")
 		fmt.Println()
 		fmt.Println("journaled precise text editing")
 		fmt.Println()
 		fmt.Println("positional arguments:")
-		fmt.Println("  {find,apply,sub,undo,mark,log,selftest}")
+		fmt.Println("  {find,apply,append,prepend,insert,sub,undo,mark,log,selftest}")
 		fmt.Println()
 		fmt.Println("options:")
 		fmt.Println("  -h, --help            show this help message and exit")
@@ -233,34 +392,40 @@ func Run(args []string) int {
 		return 0
 
 	case "find":
-		if len(args) >= 2 && (args[1] == "-h" || args[1] == "--help") {
-			fmt.Println("usage: repoman ed find [-h] [--regex] term [paths ...]")
-			fmt.Println()
-			fmt.Println("positional arguments:")
-			fmt.Println("  term")
-			fmt.Println("  paths")
-			fmt.Println()
-			fmt.Println("options:")
-			fmt.Println("  -h, --help  show this help message and exit")
-			fmt.Println("  --regex")
-			return 0
+		for _, a := range args[1:] {
+			if a == "-h" || a == "--help" {
+				fmt.Println("usage: repoman ed find [-h] [--regex] term [paths ...]")
+				fmt.Println()
+				fmt.Println("positional arguments:")
+				fmt.Println("  term")
+				fmt.Println("  paths")
+				fmt.Println()
+				fmt.Println("options:")
+				fmt.Println("  -h, --help  show this help message and exit")
+				fmt.Println("  --regex")
+				return 0
+			}
 		}
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "find requires a term")
-			return 1
-		}
-		term := args[1]
-		targetPaths := []string{"."}
+		// B-01 fix: scan for --regex anywhere in args[1:], not just after
+		// the term -- it silently became the literal search term before
+		// (`ed find --regex PAT file` searched for "--regex" itself).
 		isRegex := false
-		for _, a := range args[2:] {
+		var positional []string
+		for _, a := range args[1:] {
 			if a == "--regex" {
 				isRegex = true
 			} else {
-				if len(targetPaths) == 1 && targetPaths[0] == "." {
-					targetPaths = []string{}
-				}
-				targetPaths = append(targetPaths, a)
+				positional = append(positional, a)
 			}
+		}
+		if len(positional) < 1 {
+			fmt.Fprintln(os.Stderr, "find requires a term")
+			return 1
+		}
+		term := positional[0]
+		targetPaths := []string{"."}
+		if len(positional) > 1 {
+			targetPaths = positional[1:]
 		}
 		paths := roles.Expand(targetPaths)
 		n := 0
@@ -307,6 +472,11 @@ func Run(args []string) int {
 			fmt.Fprintf(os.Stderr, "REFUSED: %s does not exist\n", path)
 			return 1
 		}
+		j := LoadJournal()
+		if st := CheckProvenance(j, path); st.Mismatch || st.Missing {
+			fmt.Fprintf(os.Stderr, "REFUSED: %s was edited outside repoman since %s -- run `repoman provenance check` for details. Nothing written.\n", path, st.RecordedAt)
+			return 1
+		}
 		text := string(b)
 		if e > len(text) || SpanHash(text, s, e) != hash {
 			fmt.Fprintf(os.Stderr, "REFUSED: %s changed since find (stale handle) — re-run find and use a fresh handle\n", path)
@@ -316,7 +486,6 @@ func Run(args []string) int {
 		newText := text[:s] + replacement + text[e:]
 		os.WriteFile(path, []byte(newText), 0644)
 
-		j := LoadJournal()
 		Record(&j, []Edit{{File: path, Offset: s, Old: old, New: replacement}}, "apply "+filepath.Base(path))
 
 		oldTrim := old
@@ -328,6 +497,158 @@ func Run(args []string) int {
 			newTrim = newTrim[:40]
 		}
 		fmt.Printf("applied at %s:%d: %q -> %q\n", path, s, oldTrim, newTrim)
+		return 0
+
+	case "append", "prepend":
+		for _, a := range args[1:] {
+			if a == "-h" || a == "--help" {
+				fmt.Printf("usage: repoman ed %s FILE --with TEXT\n", cmd)
+				fmt.Println()
+				fmt.Println("positional arguments:")
+				fmt.Println("  FILE")
+				fmt.Println()
+				fmt.Println("options:")
+				fmt.Println("  -h, --help    show this help message and exit")
+				fmt.Println("  --with TEXT")
+				fmt.Println()
+				fmt.Println("Unconditionally safe: no find-verified handle is needed, because the")
+				fmt.Println("target is a true file boundary (offset 0 for prepend, EOF for append),")
+				fmt.Println("not existing text being trusted the way apply's matched span is.")
+				return 0
+			}
+		}
+		if len(args) < 4 || args[2] != "--with" {
+			fmt.Fprintf(os.Stderr, "Usage: repoman ed %s FILE --with TEXT\n", cmd)
+			return 1
+		}
+		path := args[1]
+		addition := args[3]
+		b, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "REFUSED: %s does not exist\n", path)
+			return 1
+		}
+		j := LoadJournal()
+		if st := CheckProvenance(j, path); st.Mismatch || st.Missing {
+			fmt.Fprintf(os.Stderr, "REFUSED: %s was edited outside repoman since %s -- run `repoman provenance check` for details. Nothing written.\n", path, st.RecordedAt)
+			return 1
+		}
+		text := string(b)
+		var offset int
+		var newText string
+		if cmd == "append" {
+			offset = len(text)
+			newText = text + addition
+		} else {
+			offset = 0
+			newText = addition + text
+		}
+		os.WriteFile(path, []byte(newText), 0644)
+
+		Record(&j, []Edit{{File: path, Offset: offset, Old: "", New: addition}}, cmd+" "+filepath.Base(path))
+
+		addTrim := addition
+		if len(addTrim) > 40 {
+			addTrim = addTrim[:40]
+		}
+		fmt.Printf("%sed to %s: %q (%d bytes)\n", cmd, path, addTrim, len(addition))
+		return 0
+
+	case "insert":
+		for _, a := range args[1:] {
+			if a == "-h" || a == "--help" {
+				fmt.Println("usage: repoman ed insert HANDLE --after|--before --with TEXT")
+				fmt.Println()
+				fmt.Println("positional arguments:")
+				fmt.Println("  HANDLE")
+				fmt.Println()
+				fmt.Println("options:")
+				fmt.Println("  -h, --help    show this help message and exit")
+				fmt.Println("  --after       insert immediately after the matched span")
+				fmt.Println("  --before      insert immediately before the matched span")
+				fmt.Println("  --with TEXT")
+				fmt.Println()
+				fmt.Println("Requires a find-verified handle exactly like apply does, and re-runs")
+				fmt.Println("the same SpanHash check before writing. Unlike apply, the matched span")
+				fmt.Println("itself is never touched -- only text before or after it is inserted --")
+				fmt.Println("so this verb cannot reproduce apply's anchor-duplication failure mode,")
+				fmt.Println("where a --with replacement accidentally restates part of the match.")
+				return 0
+			}
+		}
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: repoman ed insert <handle> --after|--before --with <text>")
+			return 1
+		}
+		handle := args[1]
+		isAfter := false
+		isBefore := false
+		insertion := ""
+		haveWith := false
+		for i := 2; i < len(args); i++ {
+			switch args[i] {
+			case "--after":
+				isAfter = true
+			case "--before":
+				isBefore = true
+			case "--with":
+				if i+1 >= len(args) {
+					fmt.Fprintln(os.Stderr, "Usage: repoman ed insert <handle> --after|--before --with <text>")
+					return 1
+				}
+				insertion = args[i+1]
+				haveWith = true
+				i++
+			}
+		}
+		if isAfter == isBefore {
+			fmt.Fprintln(os.Stderr, "Usage: repoman ed insert <handle> --after|--before --with <text> (exactly one of --after/--before)")
+			return 1
+		}
+		if !haveWith {
+			fmt.Fprintln(os.Stderr, "Usage: repoman ed insert <handle> --after|--before --with <text>")
+			return 1
+		}
+		path, s, e, hash, err := parseHandle(handle)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "REFUSED: %v\n", err)
+			return 1
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "REFUSED: %s does not exist\n", path)
+			return 1
+		}
+		j := LoadJournal()
+		if st := CheckProvenance(j, path); st.Mismatch || st.Missing {
+			fmt.Fprintf(os.Stderr, "REFUSED: %s was edited outside repoman since %s -- run `repoman provenance check` for details. Nothing written.\n", path, st.RecordedAt)
+			return 1
+		}
+		text := string(b)
+		if e > len(text) || SpanHash(text, s, e) != hash {
+			fmt.Fprintf(os.Stderr, "REFUSED: %s changed since find (stale handle) — re-run find and use a fresh handle\n", path)
+			return 1
+		}
+		var offset int
+		if isAfter {
+			offset = e
+		} else {
+			offset = s
+		}
+		newText := text[:offset] + insertion + text[offset:]
+		os.WriteFile(path, []byte(newText), 0644)
+
+		Record(&j, []Edit{{File: path, Offset: offset, Old: "", New: insertion}}, "insert "+filepath.Base(path))
+
+		insTrim := insertion
+		if len(insTrim) > 40 {
+			insTrim = insTrim[:40]
+		}
+		side := "after"
+		if isBefore {
+			side = "before"
+		}
+		fmt.Printf("inserted %s at %s:%d: %q\n", side, path, offset, insTrim)
 		return 0
 
 	case "sub":
@@ -347,35 +668,48 @@ func Run(args []string) int {
 				return 0
 			}
 		}
-		if len(args) < 5 { // sub old new --expect N
-			fmt.Fprintln(os.Stderr, "Usage: repoman ed sub <old> <new> [path ...] --expect N [--force-roles]")
-			return 1
-		}
-		oldText := args[1]
-		newText := args[2]
+		// B-01 fix: --expect and --force-roles are now recognized anywhere in
+		// args[1:], not just from index 3 onward -- previously
+		// `ed sub --expect 1 OLD NEW file` silently took "--expect" as OLD
+		// and "1" as NEW, found 0 real occurrences, and since --expect was
+		// then never actually parsed (expect defaulted to its zero value),
+		// 0 == 0 passed as success. expectSeen now makes a missing --expect
+		// an explicit refusal regardless of what total happens to be,
+		// closing that specific 0-equals-0 coincidence for good.
+		var oldText, newText string
 		var expect int
+		expectSeen := false
 		forceRoles := false
-		targetPaths := []string{"."}
-
-		parsingPaths := true
-		for i := 3; i < len(args); i++ {
-			if args[i] == "--expect" {
+		var positional []string
+		for i := 1; i < len(args); i++ {
+			switch {
+			case args[i] == "--expect":
 				if i+1 >= len(args) {
 					fmt.Fprintln(os.Stderr, "--expect requires a number")
 					return 1
 				}
 				expect, _ = strconv.Atoi(args[i+1])
+				expectSeen = true
 				i++
-				parsingPaths = false
-			} else if args[i] == "--force-roles" {
+			case args[i] == "--force-roles":
 				forceRoles = true
-				parsingPaths = false
-			} else if parsingPaths {
-				if len(targetPaths) == 1 && targetPaths[0] == "." {
-					targetPaths = []string{}
-				}
-				targetPaths = append(targetPaths, args[i])
+			default:
+				positional = append(positional, args[i])
 			}
+		}
+		if len(positional) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: repoman ed sub <old> <new> [path ...] --expect N [--force-roles]")
+			return 1
+		}
+		if !expectSeen {
+			fmt.Fprintln(os.Stderr, "REFUSED: --expect N is required. Nothing written.")
+			return 1
+		}
+		oldText = positional[0]
+		newText = positional[1]
+		targetPaths := []string{"."}
+		if len(positional) > 2 {
+			targetPaths = positional[2:]
 		}
 
 		paths := roles.Expand(targetPaths)
@@ -426,6 +760,14 @@ func Run(args []string) int {
 			return 1
 		}
 
+		j := LoadJournal()
+		for _, e := range plan {
+			if st := CheckProvenance(j, e.path); st.Mismatch || st.Missing {
+				fmt.Fprintf(os.Stderr, "REFUSED: %s was edited outside repoman since %s -- run `repoman provenance check` for details. Nothing written.\n", e.path, st.RecordedAt)
+				return 1
+			}
+		}
+
 		var edits []Edit
 		for _, e := range plan {
 			newFileText := strings.ReplaceAll(e.text, oldText, newText)
@@ -435,7 +777,6 @@ func Run(args []string) int {
 			}
 		}
 
-		j := LoadJournal()
 		labelOld := oldText
 		if len(labelOld) > 30 {
 			labelOld = labelOld[:30]
@@ -505,7 +846,7 @@ func Run(args []string) int {
 
 		for i := len(batch) - 1; i >= 0; i-- {
 			t := batch[i]
-			err := revertTxn(t)
+			err := revertTxn(&j, t)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "REFUSED at txn %d (%s): %v. Transactions after it were already reverted — journal log shows the boundary.\n", t.ID, t.Label, err)
 

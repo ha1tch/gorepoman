@@ -106,6 +106,59 @@ func runSection12(g *gate, root string) int {
 		return 1
 	}
 
+	// T-04: each reported match is annotated with the matched file's
+	// provenance status -- something no adjacent secret-scanning tool
+	// can do, since none of them own the editing layer. Three files,
+	// three distinct labels: never touched by repoman at all, written
+	// and currently matching repoman's own journal record, and tracked
+	// once but since diverged outside repoman's write paths.
+	provDir := filepath.Join(root, "badcode-provenance-src")
+	os.MkdirAll(provDir, 0755)
+
+	mustWrite(filepath.Join(provDir, "untouched.go"),
+		"package main\n\n// TOP_SECRET_FIXTURE_TOKEN, never seen by repoman\nfunc x() {}\n")
+
+	mustWrite(filepath.Join(provDir, "tracked.go"), "package main\n\nfunc y() {}\n")
+	rAppend := run("ed", "append", filepath.Join(provDir, "tracked.go"),
+		"--with", "\n// TOP_SECRET_FIXTURE_TOKEN, written through repoman\n")
+	if !g.check(rAppend.code == 0, "badcode/T-04: setup -- ed append tracks tracked.go",
+		rAppend.stdout+rAppend.stderr) {
+		return 1
+	}
+
+	mustWrite(filepath.Join(provDir, "stale.go"), "package main\n\nfunc z() {}\n")
+	rAppend = run("ed", "append", filepath.Join(provDir, "stale.go"), "--with", "\n// placeholder\n")
+	if !g.check(rAppend.code == 0, "badcode/T-04: setup -- ed append tracks stale.go",
+		rAppend.stdout+rAppend.stderr) {
+		return 1
+	}
+	// Tamper with it outside repoman entirely, after tracking -- a plain
+	// file write, not through ed/strreplace.
+	mustWrite(filepath.Join(provDir, "stale.go"),
+		"package main\n\n// TOP_SECRET_FIXTURE_TOKEN, tampered in after tracking\nfunc z() {}\n")
+
+	r = run("badcode", "check", provDir)
+	if !g.check(r.code == 1 && strings.Contains(r.stdout, "BADCODE CHECK FAIL: 3 match(es)"),
+		"badcode/T-04: all three fixture files are flagged", r.stdout+r.stderr) {
+		return 1
+	}
+	if !g.check(strings.Contains(r.stderr, "untouched.go") && strings.Contains(r.stderr, "[no provenance record]"),
+		"badcode/T-04: a file never touched by repoman is labeled \"no provenance record\"",
+		r.stderr) {
+		return 1
+	}
+	if !g.check(strings.Contains(r.stderr, "tracked.go") && strings.Contains(r.stderr, "[repoman]"),
+		"badcode/T-04: a file whose current content matches repoman's own journal record is "+
+			"labeled \"repoman\"", r.stderr) {
+		return 1
+	}
+	if !g.check(strings.Contains(r.stderr, "stale.go") && strings.Contains(r.stderr, "[stale provenance record]"),
+		"badcode/T-04: a file repoman wrote once, since changed outside repoman's own write "+
+			"paths, is labeled \"stale provenance record\" -- distinct from both other cases, "+
+			"not folded into either", r.stderr) {
+		return 1
+	}
+
 	return runSection13(g, root)
 }
 

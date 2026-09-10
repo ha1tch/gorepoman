@@ -260,11 +260,11 @@ func Run(argv []string) int {
 
 	g := &gate{self: self}
 
-	// 1. ed's own selftest -- now a real 9-path suite (see
+	// 1. ed's own selftest -- a growing multi-path suite (see
 	// pkg/ed/selftest.go; ported after a feature-parity review found
 	// the Go tree had previously stubbed this out).
 	r := run(self, "", "ed", "selftest")
-	if !g.check(r.code == 0 && strings.Contains(r.stdout, "9 paths green"), "ed selftest", r.stdout+r.stderr) {
+	if !g.check(r.code == 0 && strings.Contains(r.stdout, "paths green"), "ed selftest", r.stdout+r.stderr) {
 		return 1
 	}
 

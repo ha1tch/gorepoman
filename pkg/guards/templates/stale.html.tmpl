@@ -1,0 +1,13 @@
+<p style="font-size:13px;margin:0 0 1rem;">
+{{if .AllCurrent}}<span style="color:var(--success);">all guards exercised since {{.Since}}</span>
+{{else}}<span style="color:var(--warn-text);">STALE since {{.Since}} &mdash; {{len .Stale}} guard(s)</span>{{end}}
+</p>
+<div style="display:flex;flex-direction:column;">
+{{range .Stale}}
+<div style="display:grid;grid-template-columns:70px 110px 1fr;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">
+  <span style="font-weight:600;">{{.ID}}</span>
+  {{if .LastExercised}}<span style="color:var(--text-2);">{{.LastExercised}}</span>{{else}}<span style="color:var(--warn-text);">NEVER</span>{{end}}
+  <span>{{.Title}}</span>
+</div>
+{{end}}
+</div>
