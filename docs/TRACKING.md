@@ -561,6 +561,14 @@ Blocked by T-20, T-21, T-23, T-24 (documents behavior, not design --
 written after the verbs exist, not before).
 See docs/proposals/ed-insert-and-ticketed-niplines.md.
 
+Progress: append/prepend/insert are documented in
+repoman-040-editing.md, with real verified worked examples (T-20,
+T-21 now shipped, in v0.14.6). The niplines portion of this item's
+filed scope remains genuinely blocked -- T-23 and T-24 do not exist
+yet, so there is no request/confirm/cancel flow or TTL behavior to
+document. Status stays not-started since the item's own scope is
+not yet fully met; do not close on the partial.
+
 ## locking
 
 ### T-26. Claimed-by: optional register-item field for advisory work claims

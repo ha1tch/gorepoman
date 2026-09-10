@@ -114,7 +114,7 @@ Run `repoman doctor` first — an environment diagnostic, not a pass/fail test:
 Go version, platform, and which of the optional external tools (`gofmt`,
 `bash`, `node`, PyYAML) this environment has, with what each enables.
 
-Then run `repoman selftest` — the acceptance gate. 188 checks; exit 0 is the
+Then run `repoman selftest` — the acceptance gate. 211 checks; exit 0 is the
 gate. Do not trust a build whose selftest fails.
 
 ## Commands

@@ -333,10 +333,17 @@ func Run(args []string) int {
 	if len(args) >= 2 && (args[1] == "-h" || args[1] == "--help") {
 		switch cmd {
 		case "list":
-			fmt.Println("usage: repoman register list [-h]")
+			fmt.Println("usage: repoman register list [-h] [--format text|json|html] [--view kanban]")
 			fmt.Println()
 			fmt.Println("options:")
-			fmt.Println("  -h, --help  show this help message and exit")
+			fmt.Println("  -h, --help            show this help message and exit")
+			fmt.Println("  --format text|json|html")
+			fmt.Println("                        text (default), a validated json envelope, or a")
+			fmt.Println("                        standalone html page")
+			fmt.Println("  --view kanban         group items into the five status columns (Not")
+			fmt.Println("                        started/In progress/Complete, pending release/")
+			fmt.Println("                        Done/Dropped) instead of the flat default list;")
+			fmt.Println("                        works with every --format value")
 			return 0
 		case "show":
 			fmt.Println("usage: repoman register show [-h] item")

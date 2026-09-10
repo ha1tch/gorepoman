@@ -2,12 +2,13 @@
 
 Every subcommand that reports on the state of something it manages —
 `syncver show`/`check`, `gomod check`, `guards list`/`show`/`stale`,
-`register list`/`show`/`check`, `waveprogress --show`/`--check` — used
-to invent its own output vocabulary. A script consuming more than one
-of them had to learn a different shape for each. `--format` is the
-fix: one flag, present on every reporting subcommand, always meaning
-the same thing regardless of which object it's attached to — the same
-idea as `kubectl -o`, `docker --format`, `gh --json`.
+`register list`/`show`/`check`, `waveprogress --show`/`--check`,
+`board`, `workspace list` — used to invent its own output vocabulary. A
+script consuming more than one of them had to learn a different shape
+for each. `--format` is the fix: one flag, present on every reporting
+subcommand, always meaning the same thing regardless of which object
+it's attached to — the same idea as `kubectl -o`, `docker --format`,
+`gh --json`.
 
 ```
 $ repoman syncver show --format json

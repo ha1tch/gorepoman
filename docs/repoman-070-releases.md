@@ -108,6 +108,52 @@ exit code is the only thing to trust in the moment — see
 `repoman-020-failure-modes.md` #3 for what happens when that rule gets
 skipped under debugging pressure.
 
+### `relcore`'s mandatory pre-flight: `badcode` and `provenance`, before any step runs
+
+Before `release.steps` is even read — not a step itself, not resumable,
+not skippable by `--resume` — `relcore` runs two gates unconditionally:
+`badcode check` (`repoman-065-badcode.md`) against the whole tree, and a
+`provenance check` (T-03, `repoman-088-provenance.md`) confirming every
+journal-tracked file still matches what repoman itself last wrote. Both
+show up in the output even on a clean run, so a real pass is visibly
+distinct from "nothing to check yet":
+
+```
+$ repoman relcore 0.1.0
+-- badcode (mandatory pre-flight, not skippable)
+   ok badcode (3 pattern(s) checked)
+-- provenance (mandatory pre-flight, not skippable)
+   ok provenance (no out-of-band edits detected)
+relcore 0.1.0 at myproject (log: release-0.1.0.log)
+-- sync
+   ok sync (0s)
+
+release v0.1.0 prepared (0s)
+```
+
+An out-of-band edit — a journal-tracked file changed by something other
+than `ed`/`strreplace` since repoman last touched it — blocks the entire
+release, the same way a `badcode` match does, with no `release.steps`
+entry ever reached:
+
+```
+$ echo "tampered" > tracked.txt
+$ repoman relcore 0.2.0
+-- badcode (mandatory pre-flight, not skippable)
+   ok badcode (3 pattern(s) checked)
+-- provenance (mandatory pre-flight, not skippable)
+   ERROR provenance-mismatch: tracked.txt changed outside repoman since 2026-09-10T02:15:26Z -- recorded 428c84d4521e..., now 92e78d0b0329...
+   FAIL provenance: 1 mismatch(es) -- this gate has no override; run 'repoman provenance sanction FILE --reason "..."' for each one first, then re-run
+```
+
+There is no flag to bypass either gate. `repoman provenance sanction
+FILE --reason "..."` (accepting the current content as the new
+known-good state, with a mandatory audit trail) is the only way through
+a real mismatch — exactly the same shape as fixing a `badcode` match by
+removing the matched content. Both pre-flights re-run identically on
+`--resume`, because neither is part of the resumable-steps journal at
+all; there is nothing for `--resume` to skip.
+
 ## `gomod`: a go.mod/go.sum sanity gate
 
 Built specifically for one incident shape: a `replace` directive pointing
@@ -174,5 +220,8 @@ A full release gate — see `repoman-060-register-and-guards.md` for the
 register and dormant-guard half of this — checks all of it at once: version
 strings in sync, the register clean of closed items, every dormant guard
 current or its skip recorded, and, for Go projects, `gomod check` clean.
-Where a release-hygiene script exists for a project, all of these checks
+`relcore` itself never needs remembering to run `badcode`/`provenance` —
+both are unconditional pre-flights baked into `relcore` regardless of
+what any release-hygiene script does or does not check. Where a
+release-hygiene script exists for a project, the rest of these checks
 belong in it rather than in anyone's memory of the steps.

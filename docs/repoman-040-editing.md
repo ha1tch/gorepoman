@@ -50,6 +50,102 @@ $ repoman ed log
 txn 1  2026-08-28T15:15:01Z  apply server.go  (1 edit(s))
 ```
 
+## `append`, `prepend`, `insert`: adding text without restating what's around it
+
+`apply` replaces a matched span with `--with TEXT` — which means adding
+text *next to* something existing means writing a `--with` value that
+restates part of the match and appends to it. Get that restatement wrong
+— drop a character, duplicate a line — and the anchor itself is what's
+now corrupted, silently, since `apply` has no way to know the replacement
+was supposed to still contain the original text. `append`, `prepend`, and
+`insert` exist so adding text never requires typing out text that's
+already there.
+
+### `append`/`prepend`: no handle needed, because there's nothing to verify
+
+Both are unconditionally safe — no `find` first, no handle — because the
+target is a true file boundary (true EOF, true offset 0), not existing
+text being trusted the way a matched span is:
+
+```
+$ repoman ed append README.md --with "
+
+## License
+
+MIT"
+appended to README.md: "\n\n## License\n\nMIT" (17 bytes)
+
+$ repoman ed prepend README.md --with "<!-- auto-generated header, do not edit -->
+"
+prepended to README.md: "<!-- auto-generated header, do not edit " (44 bytes)
+```
+
+Both are recorded in the journal exactly like any other edit — `log` and
+`undo` treat them the same as an `apply`.
+
+### `insert`: a handle-verified variant of `apply` that never touches the match
+
+`insert` requires a `find`-verified handle exactly like `apply` does, and
+re-runs the same `SpanHash` check before writing. The difference is which
+side of the span the text lands on — `--after` splices at the end of the
+match, `--before` at the start — and, critically, the matched text itself
+is never part of what's written:
+
+```
+$ repoman ed find "| 010 | Getting started | Install and first run |" docs/index.md --brief
+docs/index.md:57-106:5787603c  [md-table]  line 5: | 010 | Getting started | Install and first run |
+1 occurrence(s)
+
+$ repoman ed insert docs/index.md:57-106:5787603c --before --with "| 005 | Overview | What this tool is for |
+"
+inserted before at docs/index.md:57: "| 005 | Overview | What this tool is for"
+```
+
+```
+$ repoman ed find "| 020 | Configuration | Every config key |" docs/index.md --brief
+docs/index.md:107-149:eea22a5c  [md-table]  line 6: | 020 | Configuration | Every config key |
+1 occurrence(s)
+
+$ repoman ed insert docs/index.md:107-149:eea22a5c --after --with "
+| 030 | New page | Description |"
+inserted after at docs/index.md:149: "\n| 030 | New page | Description |"
+```
+
+```markdown
+# Documentation
+
+| # | Document | Covers |
+|---|---|---|
+| 005 | Overview | What this tool is for |
+| 010 | Getting started | Install and first run |
+| 020 | Configuration | Every config key |
+| 030 | New page | Description |
+```
+
+This is why `insert` exists rather than just documenting "be careful with
+`apply`": there is no `--with` value for `insert` that *could* reproduce
+the anchor-duplication bug, because the matched span is never part of the
+text you're asked to supply — you write only what's new, and `insert`
+splices it at the verified boundary.
+
+`insert` inherits `apply`'s stale-handle refusal, for the same reason —
+holding a handle across an intervening edit means the context around the
+span may no longer be what was verified:
+
+```
+$ repoman ed find "| 010 | Getting started | Install and first run |" docs/index.md --brief
+docs/index.md:57-106:5787603c  [md-table]  line 5: | 010 | Getting started | Install and first run |
+1 occurrence(s)
+
+$ repoman ed sub "Every config key" "Every configuration key, exhaustively" docs/index.md --expect 1
+  docs/index.md: 1
+replaced 1 occurrence(s) across 1 file(s)
+
+$ repoman ed insert docs/index.md:57-106:5787603c --after --with "
+new row"
+REFUSED: docs/index.md changed since find (stale handle) — re-run find and use a fresh handle
+```
+
 ## `sub`: the same discipline, for repeated text
 
 `sub` takes an old string, a new string, and a required `--expect N` — the

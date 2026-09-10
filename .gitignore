@@ -6,3 +6,4 @@
 release-*.log
 *-checkpoint.zip
 MANIFEST.sha256
+/gorepoman_site

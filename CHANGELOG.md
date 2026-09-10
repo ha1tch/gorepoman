@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.14.9] - 2026-09-10
+
+Patch release: documentation-only. The Pages site and CLI --help text
+had drifted well behind the CLI itself -- several commands and
+options shipped with no corresponding chapter coverage, and one
+--help block was silently empty where it should have described its
+own flags.
+
+- **Fix: severe staleness across the generated docs and CLI help.**
+  `repoman-040-editing.md` now documents `append`/`prepend`
+  (unconditionally-safe boundary edits, no handle needed) and
+  `insert` (handle-verified, never touches the matched span) --
+  shipped in v0.14.6 but never written up. `repoman-060-register-
+  and-guards.md` gained the full field-line grammar (Wave/Filed-by/
+  Blocks-after/Claimed-by, including the free-text-vs-cross-project-
+  reference distinction and a real `--filed-by` refusal), all five
+  statuses, `register list --view kanban`, and `register add`'s full
+  flag set. `repoman-070-releases.md` gained coverage of `relcore`'s
+  mandatory `badcode`/`provenance` pre-flight, with real clean-run
+  and blocked-run output. `repoman-055-format.md` and
+  `repoman-000-index.md` had their command lists and chapter
+  summaries brought current. `register list --help` previously had
+  an empty options block; it now documents `--format` and `--view
+  kanban`. All worked examples are real, verified tool output, not
+  illustrative text.
+- **Fix: README.md's selftest count was stale at 188; actual count is
+  211.** Found during the completion sweep for the above, not the
+  original audit.
+- **Fix: `.gitignore` never excluded `gorepoman_site/`** (the Pages
+  build output) -- found while validating the site build locally and
+  added before it could land in a commit by accident.
+- **No code changes.** Selftest count is unchanged at 211 (0.14.8's
+  baseline); register still 22 open items. T-25 (the tracking item
+  for this doc work) gets a Progress note in TRACKING.md rather than
+  closing -- its append/prepend/insert portion is done, but the
+  niplines portion of its filed scope stays genuinely blocked on
+  T-23/T-24, which don't exist yet.
+
 ## [0.14.8] - 2026-09-10
 
 Patch release: one new field, one new storage primitive, one CI fix.

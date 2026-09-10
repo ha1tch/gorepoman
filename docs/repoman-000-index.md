@@ -17,12 +17,12 @@ twice.
 | 020 | [Failure modes](repoman-020-failure-modes.md) | A scannable catalog: what each failure looks like, the mechanism that prevents it, the incident it traces to |
 | 030 | [Getting started](repoman-030-getting-started.md) | Install, `doctor`, `selftest` as the acceptance gate, and opting in via `.repoman.json` |
 | 035 | [Migrating from vendored Python](repoman-035-migration.md) | A verified shim template and generator script for replacing vendored Python `repoman` scripts with thin `gorepoman` shims |
-| 040 | [Precise editing](repoman-040-editing.md) | `ed` and `strreplace` — handle-verified, journaled editing, with real worked examples |
+| 040 | [Precise editing](repoman-040-editing.md) | `ed` and `strreplace` — handle-verified, journaled editing (`find`/`apply`/`sub`, boundary `append`/`prepend`, handle-verified `insert`), with real worked examples |
 | 050 | [The role classifier](repoman-050-roles.md) | `roles` — the full vocabulary, per-language classifier notes, and their documented limits |
 | 055 | [Structured output: `--format`](repoman-055-format.md) | One flag, one meaning, on every reporting subcommand — the json data contract, the deterministic html path, and why an agent with shell access should relay html rather than re-render json |
-| 060 | [Register and guards](repoman-060-register-and-guards.md) | Tracking open work through to closure, and keeping dormant tests honest about when they last ran |
+| 060 | [Register and guards](repoman-060-register-and-guards.md) | Tracking open work through to closure — the full field-line grammar (Wave/Filed-by/Blocks-after/Claimed-by), all five statuses, `register list --view kanban` — and keeping dormant tests honest about when they last ran |
 | 065 | [The forbidden-string gate](repoman-065-badcode.md) | `badcode` — the mandatory release-blocking scan, why its config lives outside every repo, and how it integrates with `relcore` |
-| 070 | [Releases](repoman-070-releases.md) | `syncver`, `relcore`, `gomod` — version sync and resumable, journaled, gated releases |
+| 070 | [Releases](repoman-070-releases.md) | `syncver`, `relcore`, `gomod` — version sync, resumable/journaled/gated releases, and `relcore`'s mandatory `badcode`/`provenance` pre-flight |
 | 080 | [Staged-work tracking](repoman-080-waves.md) | `addwave` and `waveprogress` — grouping register items into a sequenced, visualized programme |
 | 085 | [Cross-project status: `board`](repoman-085-board.md) | Aggregating several local checkouts by invoking each command's own `--format json` and merging — scope, exit-code behaviour, `--definition`/axis-configured boards, and what's deliberately not built yet |
 | 086 | [Cross-project workspaces](repoman-086-workspace.md) | `workspace` — joining a shared, git-hosted directory across projects, and filing/resolving/pausing/dropping issues between them |
