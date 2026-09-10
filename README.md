@@ -98,8 +98,8 @@ sha256 repoman-freebsd-amd64
 ### Building from source instead
 
 Only needed for development on `gorepoman` itself, or a platform outside
-the thirteen the release binaries cover. Requires Go 1.21 or later; no
-third-party dependencies. `make cross` builds all thirteen release
+the thirteen the release binaries cover. Requires Go 1.25 or later (see
+`go.mod`); no third-party dependencies. `make cross` builds all thirteen release
 targets locally into `dist/` (see the `Makefile`), or just build for the
 current platform:
 

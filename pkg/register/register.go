@@ -23,15 +23,16 @@ type Row struct {
 }
 
 type Item struct {
-	TID      string
-	Title    string
-	Theme    string
-	Priority string
-	Status   string
-	Wave     string
-	FiledBy  string
-	Blocks   string
-	Body     string
+	TID       string
+	Title     string
+	Theme     string
+	Priority  string
+	Status    string
+	Wave      string
+	FiledBy   string
+	Blocks    string
+	ClaimedBy string
+	Body      string
 }
 
 type Register struct {
@@ -148,7 +149,13 @@ func parse(text, root string, cfg *config.Config) *Register {
 	// table column changes at all. Deliberately a field-line addition
 	// like Progress:, not a new mandatory table column -- that would
 	// have been a breaking format change to every register everywhere.
-	fieldRe := regexp.MustCompile(`(?m)^Theme: (\S+) · Priority: \*{0,2}(P\d)\*{0,2} · Status: (\S+)(?: · Wave: (\S+))?(?: · Filed-by: (\S+))?(?: · Blocks/after: (.*))?$`)
+	// T-26: Claimed-by follows the same additive pattern, as the
+	// trailing optional segment after Blocks/after -- an advisory
+	// work-claim identifier with no enforced syntax beyond non-empty,
+	// deliberately independent of tier computation and board rendering
+	// (neither RenderDefinition's axis dispatch nor dependency_order
+	// tiering ever reads it).
+	fieldRe := regexp.MustCompile(`(?m)^Theme: (\S+) · Priority: \*{0,2}(P\d)\*{0,2} · Status: (\S+)(?: · Wave: (\S+))?(?: · Filed-by: (\S+))?(?: · Blocks/after: ([^·\n]*[^ ·\n]))?(?: · Claimed-by: (\S+))?$`)
 
 	for _, h := range heads {
 		start := h[0]
@@ -184,17 +191,22 @@ func parse(text, root string, cfg *config.Config) *Register {
 		if len(fm) > 12 && fm[12] != -1 {
 			blocks = block[fm[12]:fm[13]]
 		}
+		claimedBy := ""
+		if len(fm) > 14 && fm[14] != -1 {
+			claimedBy = block[fm[14]:fm[15]]
+		}
 
 		reg.Items[tid] = Item{
-			TID:      tid,
-			Title:    title,
-			Theme:    block[fm[2]:fm[3]],
-			Priority: block[fm[4]:fm[5]],
-			Status:   block[fm[6]:fm[7]],
-			Wave:     wave,
-			FiledBy:  filedBy,
-			Blocks:   blocks,
-			Body:     strings.TrimRight(strings.TrimLeft(block[bodyStart:], "\r\n"), " \t\r\n") + "\n",
+			TID:       tid,
+			Title:     title,
+			Theme:     block[fm[2]:fm[3]],
+			Priority:  block[fm[4]:fm[5]],
+			Status:    block[fm[6]:fm[7]],
+			Wave:      wave,
+			FiledBy:   filedBy,
+			Blocks:    blocks,
+			ClaimedBy: claimedBy,
+			Body:      strings.TrimRight(strings.TrimLeft(block[bodyStart:], "\r\n"), " \t\r\n") + "\n",
 		}
 		reg.Spans[tid] = [2]int{start, end}
 	}
@@ -339,7 +351,8 @@ func Run(args []string) int {
 			fmt.Println("usage: repoman register add [-h] [--id ID] [--id-prefix PREFIX] --summary SUMMARY")
 			fmt.Println("                       --theme THEME --priority PRIORITY [--status STATUS]")
 			fmt.Println("                       [--wave WAVE] [--filed-by FILED_BY] [--blocks BLOCKS]")
-			fmt.Println("                       [--body BODY] [--body-file BODY_FILE] [--dry-run]")
+			fmt.Println("                       [--claimed-by CLAIMED_BY] [--body BODY]")
+			fmt.Println("                       [--body-file BODY_FILE] [--dry-run]")
 			fmt.Println()
 			fmt.Println("options:")
 			fmt.Println("  -h, --help            show this help message and exit")
@@ -354,6 +367,7 @@ func Run(args []string) int {
 			fmt.Println("  --wave WAVE")
 			fmt.Println("  --filed-by FILED_BY")
 			fmt.Println("  --blocks BLOCKS")
+			fmt.Println("  --claimed-by CLAIMED_BY")
 			fmt.Println("  --body BODY")
 			fmt.Println("  --body-file BODY_FILE")
 			fmt.Println("  --dry-run")
@@ -464,7 +478,7 @@ func Run(args []string) int {
 		}
 
 	case "add":
-		var id, summary, theme, priority, status, wave, filedBy, blocks, body, bodyFile, idPrefix string
+		var id, summary, theme, priority, status, wave, filedBy, blocks, claimedBy, body, bodyFile, idPrefix string
 		dryRun := false
 		status = "☐"
 
@@ -515,6 +529,11 @@ func Run(args []string) int {
 					blocks = args[i+1]
 					i++
 				}
+			case "--claimed-by":
+				if i+1 < len(args) {
+					claimedBy = args[i+1]
+					i++
+				}
 			case "--body":
 				if i+1 < len(args) {
 					body = args[i+1]
@@ -557,6 +576,7 @@ func Run(args []string) int {
 			}
 			filedBy = normalized
 		}
+		claimedBy = strings.TrimSpace(claimedBy)
 
 		tid := id
 		if tid == "" {
@@ -629,8 +649,12 @@ func Run(args []string) int {
 		if blocks != "" {
 			bSec = " · Blocks/after: " + blocks
 		}
-		section := fmt.Sprintf("### %s. %s\n\nTheme: %s · Priority: %s · Status: %s%s%s%s\n\n%s\n\n",
-			tid, summary, theme, priority, status, wSec, fSec, bSec, strings.TrimRight(body, " \t\r\n"))
+		cSec := ""
+		if claimedBy != "" {
+			cSec = " · Claimed-by: " + claimedBy
+		}
+		section := fmt.Sprintf("### %s. %s\n\nTheme: %s · Priority: %s · Status: %s%s%s%s%s\n\n%s\n\n",
+			tid, summary, theme, priority, status, wSec, fSec, bSec, cSec, strings.TrimRight(body, " \t\r\n"))
 
 		themeRe := regexp.MustCompile(`(?m)^## ` + regexp.QuoteMeta(theme) + `\s*$`)
 		tm := themeRe.FindStringIndex(text)

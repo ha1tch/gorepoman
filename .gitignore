@@ -1,6 +1,7 @@
 /repoman
 /dist
 .ed-journal.json
+.ed-tickets.json
 .release-state.json
 release-*.log
 *-checkpoint.zip

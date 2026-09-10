@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.14.8] - 2026-09-10
+
+Patch release: one new field, one new storage primitive, one CI fix.
+
+- **New: `Claimed-by` register field** (T-26). An optional, purely
+  advisory `· Claimed-by: agent-or-person` segment on the register
+  item field line, for marking who has picked up an open item without
+  making it a dependency of anything -- board rendering, tier
+  computation, and `RenderDefinition`'s axis dispatch never read it.
+  Same additive pattern T-06 set for `Wave`: a new optional group in
+  `fieldRe`, `Item`/`ItemSummary.ClaimedBy` (`json:"claimed_by,omitempty"`),
+  a `register add --claimed-by CLAIMED_BY` flag. New `section29.go`
+  regression coverage (8 checks).
+- **New: pending-ticket storage for `ed`'s planned two-phase
+  `niplines`** (T-22). Resolves the `ed-insert-and-ticketed-niplines.md`
+  proposal's storage-shape question: a `.ed-tickets.json` sibling file
+  next to `.ed-journal.json`, deliberately independent of `Journal` so
+  its `MaxTxns`/`MaxBytes` eviction never has to reason about pending,
+  unconfirmed state. New `pkg/ed/tickets.go` (issue/get/discard/prune,
+  TTL default 10m / ceiling 1h enforced as a hard refusal) with 12
+  `go test` cases in `pkg/ed/tickets_test.go`. `niplines`/`confirm`/
+  `cancel` themselves are not part of this release -- storage only,
+  as T-22's own scope specified; T-23/T-24 build the commands next.
+- **Fix: CI was building with Go 1.21, `go.mod` requires 1.25.**
+  `go.mod` moved to `go 1.25` at v0.14.0; `.github/workflows/
+  build-and-release.yml` and `pages.yml` were never updated to match,
+  so every CI run since v0.14.0 failed outright
+  (`go.mod requires go >= 1.25 (running go 1.21.13; GOTOOLCHAIN=local)`).
+  Both workflows now pin Go 1.25. Also corrected stale "Go 1.21"
+  build-from-source claims in README.md and the getting-started doc,
+  and a CI step name/comment hardcoding a selftest check count that
+  had already drifted (75 -> 211).
+- **Selftest: 203 to 211 paths** (T-26's 8 new checks; the last
+  release, 0.14.7, already carried the 203 baseline this counts
+  from). Separately, T-22 adds `pkg/ed`'s first `go test` coverage
+  (12 cases, `go test ./...`, not build-tagged) -- 0 before this
+  release. No regressions; register still 22 open items (T-26/T-22
+  marked code-complete, closure at the next release-note pass per
+  this project's Progress-note convention).
+
 ## [0.14.7] - 2026-09-09
 
 Patch release: three provenance/board fixes, code-complete and tested

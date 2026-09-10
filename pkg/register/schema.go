@@ -16,7 +16,8 @@ var summarySchema = builders.Object().
 	Field("title", builders.String().Required()).
 	Field("wave", builders.String()).
 	Field("filed_by", builders.String()).
-	Field("blocks", builders.String())
+	Field("blocks", builders.String()).
+	Field("claimed_by", builders.String())
 
 var listEnvelopeSchema = builders.Object().
 	Field("tool", builders.String().Pattern(`^register$`).Required()).

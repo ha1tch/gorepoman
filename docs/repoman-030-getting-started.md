@@ -11,8 +11,8 @@ chmod +x repoman
 
 Swap `linux-amd64` for the platform in use -- see the README for the full
 table (Linux/macOS/Windows/FreeBSD/OpenBSD/NetBSD/DragonFly, amd64 and
-arm64). Building from source instead requires Go 1.21 or later and no
-third-party dependencies: `go build -o repoman ./cmd/repoman`.
+arm64). Building from source instead requires Go 1.25 or later (see
+`go.mod`) and no third-party dependencies: `go build -o repoman ./cmd/repoman`.
 
 A handful of optional external tools unlock *better* validation for
 specific file types but nothing requires them -- see `doctor` below.
@@ -29,7 +29,7 @@ four optional external tools this environment has — `gofmt`, `bash`, `node`, P
 specifically enables:
 
 ```
-[OK] Go 1.27.0 (>= 1.21 (this project's go.mod floor), fine)
+[OK] Go 1.27.0 (>= 1.25 (this project's go.mod floor), fine)
 [OK] Platform: Ubuntu 24.04.4 LTS
 
 [OK] gofmt (/usr/local/go/bin/gofmt) -- usage: gofmt [flags] [path ...]

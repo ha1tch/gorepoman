@@ -2,6 +2,17 @@
 
 Updated: 2026-09-08
 
+> **Reconciliation (2026-09-09):** Proposal 1 (`insert`/`append`/
+> `prepend`) has shipped in full -- T-20/T-21, implemented as
+> designed in `pkg/ed/ed.go`. Of Proposal 2's three open questions
+> below, only the first (pending-ticket storage shape) is resolved
+> so far -- T-22 implemented the separate-sibling-file design this
+> doc leaned toward, in `pkg/ed/tickets.go`, exactly as described.
+> `niplines`/`confirm`/`cancel` themselves (T-23/T-24) are not yet
+> built; the other two open questions remain genuinely open until
+> whoever implements those items answers them. Content below is
+> otherwise unchanged and not rewritten to match what shipped.
+
 ## Origin
 
 Filed after a real editing session on this repository (the

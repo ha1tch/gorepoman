@@ -9,14 +9,15 @@ import (
 )
 
 type ItemSummary struct {
-	ID       string `json:"id"`
-	Status   string `json:"status"`
-	Priority string `json:"priority"`
-	Theme    string `json:"theme"`
-	Title    string `json:"title"`
-	Wave     string `json:"wave,omitempty"`
-	FiledBy  string `json:"filed_by,omitempty"`
-	Blocks   string `json:"blocks,omitempty"`
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	Priority  string `json:"priority"`
+	Theme     string `json:"theme"`
+	Title     string `json:"title"`
+	Wave      string `json:"wave,omitempty"`
+	FiledBy   string `json:"filed_by,omitempty"`
+	Blocks    string `json:"blocks,omitempty"`
+	ClaimedBy string `json:"claimed_by,omitempty"`
 }
 
 type ItemDetail struct {
@@ -50,7 +51,7 @@ func toSummaries(reg *Register, cfg *config.Config) []ItemSummary {
 	out := make([]ItemSummary, 0, len(tids))
 	for _, tid := range tids {
 		it := reg.Items[tid]
-		out = append(out, ItemSummary{ID: tid, Status: it.Status, Priority: it.Priority, Theme: it.Theme, Title: it.Title, Wave: it.Wave, FiledBy: it.FiledBy, Blocks: it.Blocks})
+		out = append(out, ItemSummary{ID: tid, Status: it.Status, Priority: it.Priority, Theme: it.Theme, Title: it.Title, Wave: it.Wave, FiledBy: it.FiledBy, Blocks: it.Blocks, ClaimedBy: it.ClaimedBy})
 	}
 	return out
 }

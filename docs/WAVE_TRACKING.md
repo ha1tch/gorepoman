@@ -69,25 +69,25 @@ Overall by item count: 8 of 28 items ≈ **29%**
 
 | # | Summary | Status | Register item |
 |---|---|---|---|
-| 19 | append/prepend verbs, no handle required | ☐ | T-20 |
-| 20 | insert verb, handle-verified positional insertion | ☐ | T-21 |
-| 21 | pending-ticket storage design for niplines | ☐ | T-22 |
+| 19 | append/prepend verbs, no handle required | ☑ | T-20 |
+| 20 | insert verb, handle-verified positional insertion | ☑ | T-21 |
+| 21 | pending-ticket storage design for niplines | ☑ | T-22 |
 | 22 | niplines request/preview (phase 1) with gofmt/vet preflight | ☐ | T-23 |
 | 23 | niplines confirm/cancel (phase 2), TTL enforcement | ☐ | T-24 |
 | 24 | docs: repoman-040-editing.md coverage for the new verbs | ☐ | T-25 |
 
-**Wave 7: 0/6, not started.**
+**Wave 7: 3/6, in progress.**
 
 ### Wave 8 — advisory work claims on register items (4 items, ideal 3.0d, added 2026-09-09)
 
 | # | Summary | Status | Register item |
 |---|---|---|---|
-| 25 | Claimed-by: optional register-item field for advisory work claims | ☐ | T-26 |
+| 25 | Claimed-by: optional register-item field for advisory work claims | ☑ | T-26 |
 | 26 | register claim/release: write and clear Claimed-by, journaled | ☐ | T-27 |
 | 27 | stale-claim policy: TTL or override for an abandoned Claimed-by | ☐ | T-28 |
 | 28 | surface claims on register/board views (kanban, board, board --definition) | ☐ | T-29 |
 
-**Wave 8: 0/4, not started.**
+**Wave 8: 1/4, in progress.**
 
 ---
 

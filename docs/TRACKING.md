@@ -15,11 +15,11 @@
 | T-18 | guards: distinguish never-rerun from code-moved-since (underdesigned) | release-hardening | P3 | ☐ | — |
 | T-20 | ed: append/prepend verbs, no handle required (file-boundary insertion) | ed-editing | P2 | ☑ | — |
 | T-21 | ed: insert verb, handle-verified positional insertion | ed-editing | P2 | ☑ | — |
-| T-22 | ed: pending-ticket storage design for niplines two-phase flow | ed-editing | P2 | ☐ | — |
+| T-22 | ed: pending-ticket storage design for niplines two-phase flow | ed-editing | P2 | ☑ | — |
 | T-23 | ed: niplines request/preview (phase 1) with gofmt/vet preflight | ed-editing | P2 | ☐ | T-22 |
 | T-24 | ed: niplines confirm/cancel (phase 2), TTL enforcement | ed-editing | P2 | ☐ | T-23 |
 | T-25 | docs: repoman-040-editing.md coverage for insert/append/prepend/niplines | ed-editing | P3 | ☐ | T-20,T-21,T-23,T-24 |
-| T-26 | Claimed-by: optional register-item field for advisory work claims | locking | P2 | ☐ | — |
+| T-26 | Claimed-by: optional register-item field for advisory work claims | locking | P2 | ☑ | — |
 | T-27 | register claim/release: write and clear Claimed-by, journaled | locking | P2 | ☐ | T-26 |
 | T-28 | stale-claim policy: TTL or override for an abandoned Claimed-by | locking | P2 | ☐ | T-26,T-27 |
 | T-29 | surface claims on register/board views (kanban, board, board --definition) | locking | P3 | ☐ | T-26 |
@@ -440,7 +440,7 @@ See docs/proposals/ed-insert-and-ticketed-niplines.md, Proposal 1.
 
 ### T-22. ed: pending-ticket storage design for niplines two-phase flow
 
-Theme: ed-editing · Priority: P2 · Status: ☐ · Wave: 7
+Theme: ed-editing · Priority: P2 · Status: ☑ · Wave: 7
 
 Decide and implement where pending niplines tickets live: a new
 sibling file (e.g. .ed-tickets.json) next to .ed-journal.json, or a
@@ -456,6 +456,47 @@ this settles on.
 
 See docs/proposals/ed-insert-and-ticketed-niplines.md, Proposal 2,
 "Open questions" section.
+
+Progress: decided the separate-file option, per the proposal's own
+lean and confirmed against the actual `SaveJournal` eviction logic
+(`pkg/ed/ed.go`) -- `MaxTxns`/`MaxBytes` eviction walks `j.Txns` by
+count and serialized size, and folding tickets into `Journal` would
+force that loop to special-case pending, unconfirmed entries for no
+benefit. Implemented in new `pkg/ed/tickets.go`: `Ticket` (id, file,
+1-based inclusive start/end line, pre-nip hash, preview-text hash,
+issued-at, expires-at) and `TicketStore` (map keyed by id plus a
+monotonic `NextID`, mirroring `Journal`'s own txn-id counter so a
+discarded ticket's id is never reused) persisted to
+`.ed-tickets.json`, atomic tmp-file-plus-rename write exactly like
+`SaveJournal`. `IssueTicket`/`GetTicket`/`DiscardTicket`/
+`PruneExpired`/`Ticket.IsExpired`/`HashContent` cover creation,
+lookup, removal (used by both a successful confirm and a cancel),
+expiry-driven bulk cleanup, and the shared sha256-hex digest shape
+already used by `FileProvenance`. `DefaultTicketTTL` (10 min) and
+`MaxTicketTTL` (1 hour, enforced as a hard refusal, never silently
+clamped) follow the proposal doc's own TTL table. `.ed-tickets.json`
+added to `.gitignore` alongside `.ed-journal.json`, same local
+disposable-session-state treatment.
+
+Verified via a standalone Go program exercising the full surface (20
+checks: fresh-store, issue, persistence round-trip, id monotonicity
+including non-reuse after discard, invalid-range and missing-hash
+refusals, TTL-ceiling refusal and at-ceiling acceptance, expiry,
+pruning, discard, unknown-id no-op) before committing to permanent
+coverage. Permanent regression coverage added as `pkg/ed/
+tickets_test.go` (12 `go test` cases, this project's existing but
+previously singular precedent for native-Go package tests --
+`pkg/workspace/schema_test.go` -- now has a second user) rather than
+CLI-driven `selftest` coverage, since this item is purely a storage
+primitive with no command-line surface of its own yet; `go test
+./...` is not build-tagged or otherwise gated, so this is live
+coverage under the default invocation, not a dormant guard requiring
+separate registration under Part 3 §8 of the working agreement.
+
+Deliberately out of scope here, left for T-23/T-24: `ed niplines`
+(request/preview), `ed confirm`/`ed cancel` (redeem/discard), the
+gofmt/vet preflight, and any CLI wiring in `Run()`. This item is the
+storage shape alone, as its own spec asked for.
 
 ### T-23. ed: niplines request/preview (phase 1) with gofmt/vet preflight
 
@@ -524,7 +565,7 @@ See docs/proposals/ed-insert-and-ticketed-niplines.md.
 
 ### T-26. Claimed-by: optional register-item field for advisory work claims
 
-Theme: locking · Priority: P2 · Status: ☐ · Wave: 8
+Theme: locking · Priority: P2 · Status: ☑ · Wave: 8
 
 Add an optional `Claimed-by` field to the register item field line
 (`Theme: x · Priority: Pn · Status: s · Wave: n · Filed-by: y ·
@@ -541,6 +582,40 @@ deliberately independent of that -- board rendering, tier computation,
 and `RenderDefinition`'s axis dispatch never need to know a claim
 exists. Confirmed no existing field-line regex reserves this slot
 before filing.
+
+Progress: implemented end-to-end. `fieldRe` in `pkg/register/register.go`
+gained a new optional `(?: · Claimed-by: (\S+))?` group appended after
+Blocks/after, verified against 6 representative field-line shapes
+(with/without Wave, Blocks/after containing a comma, with/without the
+new segment) via a standalone Go test program before trusting it in
+the full build. `Item.ClaimedBy` and `ItemSummary.ClaimedBy` (json
+`claimed_by,omitempty`) added; `summarySchema` gained a plain optional
+`claimed_by` string field (no nullability trap here -- unlike T-30,
+this is a string, not a slice, so empty-vs-null does not arise).
+`register add` gained `--claimed-by CLAIMED_BY`, threaded through the
+generated field-line template alongside the existing Wave/Filed-by/
+Blocks-after segments, and its `--help` usage/options text. New
+`section29.go` regression coverage (8 checks, selftest 203 -> 211):
+`register add --claimed-by` writes the segment correctly; an item
+without it gets no segment at all (omitempty, not an empty marker);
+and a hand-written field line combining Wave, Filed-by, a
+comma-bearing Blocks/after, and Claimed-by together all parse
+correctly, confirming the new segment neither swallows nor is
+swallowed by the one before it. Self-check note: an early manual
+`--with` replacement while fixing this same file's `register add
+--help` text corrupted leading-tab indentation on one line (the ed
+apply tool re-anchors on the matched span's own surrounding
+whitespace, so a hand-typed replacement with its own leading tabs
+compounds rather than replaces); caught immediately by `gofmt -l`
+before it reached a build, fixed with `gofmt -w` (a pure mechanical
+formatter, not a substitution tool within the meaning of this
+project's editing-tool restriction), and confirmed the file was never
+provenance-tracked to begin with, so no stale journal record resulted.
+Not yet done: T-27's `register claim`/`register release` subcommands
+(separate, dependent register entry) and T-29's board/kanban surfacing
+of claims (also separate, dependent). This item is code-complete and
+tested, pending the next release for closure per this project's
+established Progress-note convention.
 
 Value shape: a free-text agent/session identifier, no enforced
 syntax beyond non-empty (unlike Filed-by's `<project>:<prefix>-<n>`

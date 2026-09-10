@@ -11,11 +11,12 @@ permissions:
   contents: write
 
 jobs:
-  # Runs on every push and PR: build, vet, gofmt, and the 75-check
-  # selftest acceptance gate. This is the same gate documented in
-  # docs/repoman-030-getting-started.md -- a red gate here means the
-  # same thing it means locally: do not trust this build, and (for a
-  # tag push) do not let it reach a release.
+  # Runs on every push and PR: build, vet, gofmt, and the full
+  # selftest acceptance gate (check count grows over time -- see the
+  # step's own output for the current total). This is the same gate
+  # documented in docs/repoman-030-getting-started.md -- a red gate
+  # here means the same thing it means locally: do not trust this
+  # build, and (for a tag push) do not let it reach a release.
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -25,7 +26,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.21"
+          go-version: "1.25"
 
       - name: Build
         run: go build -o repoman ./cmd/repoman
@@ -42,7 +43,7 @@ jobs:
             exit 1
           fi
 
-      - name: selftest (75-check acceptance gate)
+      - name: selftest (full acceptance gate)
         run: ./repoman selftest
 
   # Only runs on a pushed version tag, and only after verify has
@@ -62,7 +63,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.21"
+          go-version: "1.25"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
