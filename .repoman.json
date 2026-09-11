@@ -18,12 +18,12 @@
   },
   "wave_tracking": "docs/WAVE_TRACKING.md",
   "wave_visibility": {
-    "1": true,
-    "2": true,
-    "4": true,
-    "5": true,
+    "1": false,
+    "2": false,
+    "4": false,
+    "5": false,
     "6": true,
-    "7": true,
+    "7": false,
     "8": true
   }
 }

@@ -93,5 +93,5 @@ func runSection21(g *gate, root string) int {
 		return 1
 	}
 
-	return runSection22(g, root)
+	return runSection21a(g, root)
 }

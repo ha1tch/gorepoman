@@ -30,6 +30,7 @@ between descriptions.
 | `wave_themes` | `{}` | `waveprogress` |
 | `wave_visibility` | `{}` | `waveprogress` |
 | `wave_html_title` | `"wave progress"` | `waveprogress` |
+| `wave_complete_word` | `""` (means `"done"`) | `waveprogress` |
 | `release` | `{"steps": [], "archive": {}}` | `relcore` |
 | `workspaces` | `[]` | `workspace` |
 
@@ -137,6 +138,18 @@ separate notion of what's shown.
 
 **`wave_html_title`** (default `"wave progress"`) — the heading text for
 `waveprogress --html` output. Cosmetic; the generic default is deliberate.
+
+**`wave_complete_word`** (default `""`, meaning `"done"`) — the word
+`waveprogress` writes into a wave's own summary line
+(`**Wave N: k/n, <word>.**`) once that wave reaches 100%. Hardcoded to
+`"done"` before this key existed, with no override — a project whose own
+established convention uses a different word had every existing summary
+line silently rewritten the first time it ran `waveprogress` on an
+upgraded binary, a one-time, unavoidable terminology migration bundled
+into the upgrade. Set this to whatever word your project already uses
+(for example `"complete"`) to keep existing prose consistent across an
+upgrade; leaving it unset is byte-identical to behavior before this key
+existed.
 
 ## Release
 

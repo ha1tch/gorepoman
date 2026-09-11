@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ha1tch/gorepoman/pkg/roles"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
@@ -20,6 +21,34 @@ const (
 	MaxBytes = 10 * 1024 * 1024
 	CtxBytes = 64
 )
+
+// truncateUTF8 returns s truncated to at most maxBytes bytes, never
+// splitting a multi-byte UTF-8 rune. B-13 fix: every preview/label
+// trim in this file used to slice by raw byte count (s[:n]), which
+// silently produced invalid UTF-8 on stdout whenever the cut point
+// landed inside a multi-byte codepoint -- confirmed reproducible with
+// long runs of block-drawing characters (U+2591) in ed find's own
+// line preview. If maxBytes itself lands mid-rune, back up to the
+// start of that rune rather than keeping the partial bytes.
+//
+// TruncateUTF8 is the exported form, for other packages that already
+// import pkg/ed anyway (badcode, provenance, strreplace) and need the
+// same rune-safe truncation for their own preview/snippet text rather
+// than duplicating this helper a third time.
+func TruncateUTF8(s string, maxBytes int) string {
+	return truncateUTF8(s, maxBytes)
+}
+
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	b := s[:maxBytes]
+	for len(b) > 0 && !utf8.RuneStart(s[len(b)]) {
+		b = b[:len(b)-1]
+	}
+	return b
+}
 
 type Edit struct {
 	File   string `json:"file"`
@@ -368,19 +397,19 @@ func revertTxn(j *Journal, t Txn) error {
 func Run(args []string) int {
 	args = webhelp.NormalizeBriefFirst(args)
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: repoman ed <find|apply|append|prepend|insert|sub|undo|mark|log|selftest> ...")
+		fmt.Fprintln(os.Stderr, "Usage: repoman ed <find|apply|append|prepend|insert|niplines|confirm|cancel|sub|undo|mark|log|selftest> ...")
 		return 1
 	}
 
 	cmd := args[0]
 	switch cmd {
 	case "-h", "--help":
-		fmt.Println("usage: repoman ed [-h] {find,apply,append,prepend,insert,sub,undo,mark,log,selftest} ...")
+		fmt.Println("usage: repoman ed [-h] {find,apply,append,prepend,insert,niplines,confirm,cancel,sub,undo,mark,log,selftest} ...")
 		fmt.Println()
 		fmt.Println("journaled precise text editing")
 		fmt.Println()
 		fmt.Println("positional arguments:")
-		fmt.Println("  {find,apply,append,prepend,insert,sub,undo,mark,log,selftest}")
+		fmt.Println("  {find,apply,append,prepend,insert,niplines,confirm,cancel,sub,undo,mark,log,selftest}")
 		fmt.Println()
 		fmt.Println("options:")
 		fmt.Println("  -h, --help            show this help message and exit")
@@ -432,10 +461,7 @@ func Run(args []string) int {
 		for _, occ := range roles.Occurrences(term, paths, isRegex) {
 			b, _ := os.ReadFile(occ.Path)
 			h := SpanHash(string(b), occ.Start, occ.End)
-			lineTrim := strings.TrimSpace(occ.Line)
-			if len(lineTrim) > 80 {
-				lineTrim = lineTrim[:80]
-			}
+			lineTrim := truncateUTF8(strings.TrimSpace(occ.Line), 80)
 			fmt.Printf("%s:%d-%d:%s  [%s]  line %d: %s\n", occ.Path, occ.Start, occ.End, h, occ.Role, occ.LineNo, lineTrim)
 			n++
 		}
@@ -488,14 +514,8 @@ func Run(args []string) int {
 
 		Record(&j, []Edit{{File: path, Offset: s, Old: old, New: replacement}}, "apply "+filepath.Base(path))
 
-		oldTrim := old
-		if len(oldTrim) > 40 {
-			oldTrim = oldTrim[:40]
-		}
-		newTrim := replacement
-		if len(newTrim) > 40 {
-			newTrim = newTrim[:40]
-		}
+		oldTrim := truncateUTF8(old, 40)
+		newTrim := truncateUTF8(replacement, 40)
 		fmt.Printf("applied at %s:%d: %q -> %q\n", path, s, oldTrim, newTrim)
 		return 0
 
@@ -547,10 +567,7 @@ func Run(args []string) int {
 
 		Record(&j, []Edit{{File: path, Offset: offset, Old: "", New: addition}}, cmd+" "+filepath.Base(path))
 
-		addTrim := addition
-		if len(addTrim) > 40 {
-			addTrim = addTrim[:40]
-		}
+		addTrim := truncateUTF8(addition, 40)
 		fmt.Printf("%sed to %s: %q (%d bytes)\n", cmd, path, addTrim, len(addition))
 		return 0
 
@@ -640,16 +657,22 @@ func Run(args []string) int {
 
 		Record(&j, []Edit{{File: path, Offset: offset, Old: "", New: insertion}}, "insert "+filepath.Base(path))
 
-		insTrim := insertion
-		if len(insTrim) > 40 {
-			insTrim = insTrim[:40]
-		}
+		insTrim := truncateUTF8(insertion, 40)
 		side := "after"
 		if isBefore {
 			side = "before"
 		}
 		fmt.Printf("inserted %s at %s:%d: %q\n", side, path, offset, insTrim)
 		return 0
+
+	case "niplines":
+		return runNiplines(args)
+
+	case "confirm":
+		return runConfirm(args)
+
+	case "cancel":
+		return runCancel(args)
 
 	case "sub":
 		for _, a := range args[1:] {
@@ -777,14 +800,8 @@ func Run(args []string) int {
 			}
 		}
 
-		labelOld := oldText
-		if len(labelOld) > 30 {
-			labelOld = labelOld[:30]
-		}
-		labelNew := newText
-		if len(labelNew) > 30 {
-			labelNew = labelNew[:30]
-		}
+		labelOld := truncateUTF8(oldText, 30)
+		labelNew := truncateUTF8(newText, 30)
 		Record(&j, edits, fmt.Sprintf("sub %q->%q", labelOld, labelNew))
 		fmt.Printf("replaced %d occurrence(s) across %d file(s)\n", total, len(plan))
 		return 0

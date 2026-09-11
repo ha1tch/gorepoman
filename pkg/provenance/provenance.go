@@ -121,6 +121,8 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("options:")
 		fmt.Println("  -h, --help  show this help message and exit")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-088-provenance", argv)
 		return 0
 	}
 	if len(argv) == 0 || (argv[0] != "check" && argv[0] != "sanction") {
@@ -152,6 +154,8 @@ func Run(argv []string) int {
 		fmt.Println()
 		fmt.Println("options:")
 		fmt.Println("  -h, --help  show this help message and exit")
+		fmt.Println(webhelp.SuppressionNote)
+		webhelp.PrintIfAvailable(os.Stdout, "repoman-088-provenance", argv)
 		return 0
 	}
 
@@ -186,6 +190,7 @@ func Run(argv []string) int {
 // re-sync the hash to current content) lives in ed.Sanction, which
 // owns the journal read/write this needs.
 func runSanction(argv []string) int {
+	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
 		if a == "-h" || a == "--help" {
 			fmt.Println("usage: repoman provenance sanction FILE --reason REASON")
@@ -207,6 +212,8 @@ func runSanction(argv []string) int {
 			fmt.Println("options:")
 			fmt.Println("  -h, --help       show this help message and exit")
 			fmt.Println("  --reason REASON")
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-088-provenance", argv)
 			return 0
 		}
 	}

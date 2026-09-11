@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ha1tch/gorepoman/pkg/ed"
 	"github.com/ha1tch/gorepoman/pkg/report"
 	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
@@ -160,10 +161,7 @@ func checkGosumCompleteness(root string) ([]string, []string) {
 		return errs, nil
 	}
 	if *res.rc != 0 {
-		out := strings.TrimSpace(res.out)
-		if len(out) > 300 {
-			out = out[:300]
-		}
+		out := ed.TruncateUTF8(strings.TrimSpace(res.out), 300)
 		return nil, []string{fmt.Sprintf(
 			"gosum-check-inconclusive: `go list -deps -mod=readonly ./...` failed "+
 				"for a reason other than a missing go.sum entry, so completeness "+

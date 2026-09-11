@@ -115,6 +115,19 @@ type Config struct {
 	// Cosmetic only; default is generic on purpose.
 	WaveHTMLTitle string `json:"wave_html_title"`
 
+	// WaveCompleteWord: FR-03. The word waveStatusWord's B-04 fix
+	// writes into a wave's own summary line ("**Wave N: k/n,
+	// <word>.**") once that wave reaches 100%. Hardcoded to "done"
+	// before this key existed, with no override -- a project whose own
+	// established convention uses a different word (xolu: "complete")
+	// had every existing summary line silently rewritten the first
+	// time it ran waveprogress on an upgraded binary, a one-time,
+	// unavoidable terminology migration bundled into the upgrade.
+	// Empty string (the default) means "done", byte-identical to
+	// behaviour before this key existed -- only a project that sets
+	// this explicitly sees anything different.
+	WaveCompleteWord string `json:"wave_complete_word"`
+
 	Release Release `json:"release"`
 
 	// Workspaces: which cross-project workspace(s) this project belongs
@@ -205,6 +218,7 @@ func Defaults() Config {
 		WaveThemes:        map[string][]string{},
 		WaveVisibility:    map[string]bool{},
 		WaveHTMLTitle:     "wave progress",
+		WaveCompleteWord:  "", // empty means "done" -- see the field's own doc comment
 		Release: Release{
 			Steps:   []map[string]interface{}{},
 			Archive: map[string]interface{}{},

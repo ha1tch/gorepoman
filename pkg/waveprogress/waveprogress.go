@@ -110,6 +110,7 @@ type env struct {
 
 	docPath      string
 	trackingPath string
+	resolvedPath string
 
 	headingRe   *regexp.Regexp
 	rowRe       *regexp.Regexp
@@ -119,6 +120,8 @@ type env struct {
 	rowTRe      *regexp.Regexp
 	afterRe     *regexp.Regexp
 	trackingRow *regexp.Regexp
+	waveRowRe   *regexp.Regexp
+	resolvedHdr *regexp.Regexp
 }
 
 func newEnv() (*env, error) {
@@ -135,6 +138,7 @@ func newEnv() (*env, error) {
 		cfg:          cfg,
 		docPath:      filepath.Join(root, cfg.WaveTracking),
 		trackingPath: filepath.Join(root, cfg.Tracking),
+		resolvedPath: filepath.Join(root, cfg.Resolved),
 
 		headingRe:   regexp.MustCompile(`(?m)^### Wave (\S+) — [^(]+\(`),
 		rowRe:       regexp.MustCompile(`(?m)^\|\s*\d+\s*\|.*\|\s*([✓◐☐])\s*\|`),
@@ -143,7 +147,9 @@ func newEnv() (*env, error) {
 		tnumRe:      regexp.MustCompile(`(` + idAlt + `)`),
 		rowTRe:      regexp.MustCompile(`(?m)^\|\s*(` + idAlt + `)\s*\|[^|]*\|\s*([a-z0-9-]+)\s*\|`),
 		afterRe:     regexp.MustCompile(`After:\s*(` + idAlt + `)`),
-		trackingRow: regexp.MustCompile(`(?m)^\| (` + idAlt + `) \| ([^|]*) \| ([a-z0-9-]+) \| (P\d) \| ([✓◐☐]) \| ([^|]*) \|`),
+		waveRowRe:   regexp.MustCompile(`(?m)^(\|\s*\d+\s*\|[^|]*\|\s*)([✓◐☐])(\s*\|)([^|]*)(\|)\s*$`),
+		resolvedHdr: regexp.MustCompile(`(?m)^## \[[^\]]*\]\s+(` + idAlt + `)\s`),
+		trackingRow: regexp.MustCompile(`(?m)^\| (` + idAlt + `) \| ([^|]*) \| ([a-z0-9-]+) \| (P\d) \| ([✓◐☐✗☑]) \| ([^|]*) \|`),
 	}
 	return e, nil
 }
@@ -269,6 +275,131 @@ func (e *env) allWaveTnums(text string) map[string]bool {
 		}
 	}
 	return result
+}
+
+// syncWaveRowsFromRegister is FR-04: derives each wave-table row's
+// own Status cell (✓/◐/☐) from the actual current state of the
+// register/RESOLVED documents, and rewrites text to match before
+// parseWaves ever reads it. Composes cleanly with the B-04 fix
+// above -- this corrects the rows, B-04's existing regeneration then
+// recomputes the summary sentence from those now-correct rows, with
+// no duplicated logic between the two.
+//
+// Before this existed, nothing regenerated a wave row's own status
+// outside of register close's own direct wiring (propagateCloseToWaves
+// in pkg/register) -- a row could drift from reality whenever an
+// item's closure or status change happened any other way (RESOLVED.md
+// gaining a closure header by hand, or a status edit that bypassed
+// register close entirely), and neither this command nor register
+// close had any way to notice or repair that.
+//
+// Only rows that carry a register_item id (column 4, via itemCol4Re)
+// are touched -- a wave item with no linked ticket yet has no
+// register/RESOLVED state to derive from, and is left exactly as
+// found, the same as before this function existed. A row whose id is
+// found in NEITHER the tracking document nor RESOLVED.md's closure
+// headers is left untouched and reported as a warning: this function
+// corrects rows from real state, it never guesses at one.
+//
+// Ties are resolved in RESOLVED's favor: an id that (incorrectly)
+// appears in both is closed, never open -- RESOLVED.md's closure
+// headers are the more specific claim (this exact id, at this exact
+// version, closed on this exact date) against TRACKING.md's plainer
+// "still has an open row" signal.
+func (e *env) syncWaveRowsFromRegister(text string) (string, []string) {
+	var warnings []string
+
+	closed := map[string]bool{}
+	if b, err := os.ReadFile(e.resolvedPath); err == nil {
+		for _, m := range e.resolvedHdr.FindAllStringSubmatch(string(b), -1) {
+			closed[m[1]] = true
+		}
+	}
+
+	openStatus := map[string]string{}
+	if b, err := os.ReadFile(e.trackingPath); err == nil {
+		for _, m := range e.trackingRow.FindAllStringSubmatch(string(b), -1) {
+			openStatus[m[1]] = m[5]
+		}
+	}
+
+	newText := e.waveRowRe.ReplaceAllStringFunc(text, func(row string) string {
+		m := e.waveRowRe.FindStringSubmatch(row)
+		if m == nil {
+			return row
+		}
+		col4 := m[4]
+		ids := e.tnumRe.FindAllString(col4, -1)
+		if len(ids) == 0 {
+			return row
+		}
+
+		want := ""
+		for _, id := range ids {
+			var idStatus string
+			switch {
+			case closed[id]:
+				idStatus = "✓"
+			case openStatus[id] != "":
+				idStatus = wavelevelStatus(openStatus[id])
+			default:
+				warnings = append(warnings, fmt.Sprintf(
+					"wave_progress: %s is linked from a wave row but found in neither %s nor %s's closure headers -- row left as-is",
+					id, filepath.Base(e.trackingPath), filepath.Base(e.resolvedPath)))
+				return row
+			}
+			// A row can name more than one id via a range (T-1 through
+			// T-3): the row is only as done as its LEAST done member --
+			// ✓ only if every one of them is ✓, ◐ if any progress at
+			// all, ☐ only if literally none.
+			want = combineStatus(want, idStatus)
+		}
+		if want == "" || want == m[2] {
+			return row
+		}
+		return m[1] + want + m[3] + m[4] + m[5]
+	})
+
+	return newText, warnings
+}
+
+// combineStatus folds one more member status into a running row
+// status: ✓ only survives if every member so far was also ✓; any ◐
+// (or a mix of ✓ and ☐) downgrades to ◐; otherwise ☐. acc == "" means
+// "first member seen", so its status is taken as-is.
+func combineStatus(acc, next string) string {
+	if acc == "" {
+		return next
+	}
+	if acc == next {
+		return acc
+	}
+	return "◐"
+}
+
+// wavelevelStatus maps a register item status (the full five-symbol
+// legend: ✓◐☐✗☑, see pkg/register) down to the three-symbol
+// vocabulary a wave-table row itself uses (✓◐☐). ✓ (closed) and ◐/☐
+// pass through unchanged. ☑ (done, pending release) is genuine,
+// real progress -- implementation is finished and verified -- but
+// it is not yet closed via register close from a wave-tracking
+// point of view, so it reads as ◐: neither fully done nor
+// untouched. ✗ (dropped) contributes nothing to a wave's progress,
+// so it reads as ☐. An unrecognised status (should not happen,
+// since trackingRow's regex only ever captures one of the five
+// legal symbols) also falls back to ☐ rather than panicking or
+// silently passing through an unknown rune.
+func wavelevelStatus(registerStatus string) string {
+	switch registerStatus {
+	case "✓", "◐", "☐":
+		return registerStatus
+	case "☑":
+		return "◐"
+	case "✗":
+		return "☐"
+	default:
+		return "☐"
+	}
 }
 
 func (e *env) parseWaves(text string) []wave {
@@ -797,6 +928,19 @@ func Run(argv []string) int {
 		return 1
 	}
 	text := string(b)
+
+	// FR-04: correct each wave rows own Status cell against real
+	// register/RESOLVED state before parsing -- see
+	// syncWaveRowsFromRegister own doc comment. A row with nothing to
+	// correct is untouched; text is unchanged in that case and this is
+	// a no-op all the way through to the final write-vs-check comparison
+	// below.
+	synced, warnings := e.syncWaveRowsFromRegister(text)
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, w)
+	}
+	text = synced
+
 	allWaves := e.parseWaves(text)
 	if len(allWaves) == 0 {
 		fmt.Fprintln(os.Stderr, "no waves parsed -- aborting, not touching the file")
@@ -915,7 +1059,7 @@ func Run(argv []string) int {
 	for _, w := range allWaves {
 		waveLineRe := regexp.MustCompile(`\*\*Wave ` + regexp.QuoteMeta(w.ID) + `: \d+/\d+, [^*]+\.\*\*`)
 		if waveLineRe.MatchString(newText) {
-			fresh := fmt.Sprintf("**Wave %s: %s/%d, %s.**", w.ID, formatG(w.DoneEquiv), w.Total, waveStatusWord(w))
+			fresh := fmt.Sprintf("**Wave %s: %s/%d, %s.**", w.ID, formatG(w.DoneEquiv), w.Total, waveStatusWord(w, e.cfg.WaveCompleteWord))
 			newText = waveLineRe.ReplaceAllLiteralString(newText, fresh)
 		}
 	}
@@ -999,13 +1143,19 @@ func padLeft(s string, width int) string {
 // waveStatusWord mirrors the phrase addwave hardcodes as "not started"
 // for a brand-new wave, extended to the two states a wave actually
 // passes through afterward -- used by the B-04 fix above to keep a
-// wave's own summary line honest as it progresses.
-func waveStatusWord(w wave) string {
+// wave's own summary line honest as it progresses. completeWord is
+// FR-03's override for the "done" word (config key
+// wave_complete_word); pass "" to get the original hardcoded "done",
+// exactly as before this parameter existed.
+func waveStatusWord(w wave, completeWord string) string {
+	if completeWord == "" {
+		completeWord = "done"
+	}
 	switch {
 	case w.DoneEquiv <= 0:
 		return "not started"
 	case w.DoneEquiv >= float64(w.Total) && w.Total > 0:
-		return "done"
+		return completeWord
 	default:
 		return "in progress"
 	}

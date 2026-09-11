@@ -45,6 +45,26 @@ one's been filed for it. Item numbers are global and sequential across the
 whole programme, never reused once assigned, continuing from the highest
 existing row in any wave's table.
 
+A project's very first `addwave` call needs no manual setup: if
+`docs/WAVE_TRACKING.md` and `docs/WAVE_PLAN.md` (or whatever
+`wave_tracking`/`wave_plan` in `.repoman.json` point at) don't exist
+yet, `addwave` creates both with a minimal skeleton before adding the
+wave, announced on stdout rather than done silently:
+
+```
+$ repoman addwave --name "first wave" --ideal-days 1 \
+    --items-json '[{"summary": "needs a wave", "register_item": "T-01"}]' \
+    --plan-note "fixture"
+created docs/WAVE_TRACKING.md (was missing -- minimal skeleton)
+created docs/WAVE_PLAN.md (was missing -- minimal skeleton)
+Wave number: 1  (computed; checked against headings + prose reservations)
+...
+```
+
+`--dry-run` still writes nothing to disk in this case — it previews
+using the same skeleton content held in memory instead of reading it
+back from files that were never created.
+
 What `addwave` deliberately does *not* do: write the load-bearing prose.
 `--plan-note` is a judgment call about why the wave exists and what it
 depends on — written deliberately each time, not generated.
@@ -140,3 +160,78 @@ views already show as extra lines under a wave — real arrays a
 consumer can act on, not text to re-parse. `check --format json`
 returns `{"stale": true|false}`, with the same non-zero-when-stale
 exit code the text form has always used.
+
+## Keeping a wave row's own status honest
+
+A wave table row's Status cell (`✓`/`◐`/`☐`) is data written once, when
+`addwave` creates the row — nothing updates it automatically just because
+the linked register item's real status changes elsewhere, unless one of
+the two mechanisms below runs.
+
+**`register close` propagates directly.** Closing an item that a wave
+row references via its Register item column updates that row's checkbox
+in the same operation, and regenerates wave progress immediately after:
+
+```
+$ repoman register close T-02 --version 0.1.0
+   close T-02 (record): RESOLVED.md updated
+   close T-02 (register): TRACKING.md updated
+wave_progress: regenerated (1 waves)
+closed T-02 at v0.1.0. Remaining by hand: the CHANGELOG entry for 0.1.0 should cross-reference this closure (the changelog says what shipped; RESOLVED.md says what was wrong — they reference, never duplicate).
+   wave: T-02 marked done in docs/WAVE_TRACKING.md and wave progress regenerated
+```
+
+This is the common path and needs nothing extra — closing through
+`register close` keeps both documents in step by construction.
+
+**`waveprogress` itself re-derives every row before rendering,
+independent of how an item was closed.** A row can drift from reality
+whenever an item's status changes some other way — `RESOLVED.md` gaining
+a closure header by hand, for instance, bypassing `register close`
+entirely. Every `waveprogress` invocation corrects this first, before
+anything else runs: each row with a linked register item is checked
+against `RESOLVED.md`'s own closure headers and `TRACKING.md`'s current
+open rows, and rewritten to match before the summary line, progress bar,
+or `Overall` percentage are computed from it.
+
+```
+$ cat >> docs/RESOLVED.md <<'EOF'
+
+## [0.1.0] T-02 — thing (v0.1.0, 2026-09-10)
+
+Theme: x · closed 0.1.0 · 2026-09-10
+closed by hand, bypassing register close
+
+Cross-ref: CHANGELOG 0.1.0.
+EOF
+
+$ repoman waveprogress
+wave_progress: regenerated (1 waves)
+
+$ grep "Wave 1:" docs/WAVE_TRACKING.md
+**Wave 1: 1/1, done.**
+```
+
+`--check` sees this the same way it sees any other drift — a row that
+needs correcting is stale, exactly like a summary line that needs
+recomputing:
+
+```
+$ repoman waveprogress --check
+wave_progress: wave-tracking document is stale -- run without --check to regenerate
+```
+
+A row whose linked id is found in **neither** document — not open in
+`TRACKING.md`, not closed in `RESOLVED.md` — is left exactly as found,
+and reported as a warning rather than guessed at:
+
+```
+$ repoman waveprogress
+wave_progress: T-02 is linked from a wave row but found in neither TRACKING.md nor RESOLVED.md's closure headers -- row left as-is
+wave_progress: already up to date
+```
+
+A row naming more than one id (a `T-1 through T-3` range) takes the
+**least-done** member's status: all `✓` only if every member is `✓`,
+`◐` if the members disagree or any one of them is only partially done,
+`☐` only if literally none of them are closed.

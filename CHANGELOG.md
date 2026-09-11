@@ -1,5 +1,259 @@
 # Changelog
 
+## [0.16.0] - 2026-09-11
+
+Minor release: completes Wave 7 (ed vocabulary: insert/append/prepend
+and ticketed niplines), now 6/6 and fully closed. Adds the ticketed
+niplines flow -- `repoman ed niplines`/`confirm`/`cancel` -- as a
+deliberate two-phase alternative to `apply` for line-range removals,
+which have no content anchor for `find`'s handle to verify. Register:
+T-23, T-24, T-25 -- full writeups in RESOLVED.md, not duplicated here.
+
+- **New: `repoman ed niplines FILE START END` previews a line-range
+  removal, runs an advisory gofmt/go vet preflight against the
+  post-removal content, and issues a ticket -- writing nothing to
+  FILE.** The preview renders as a diff (removed lines marked, a few
+  lines of context each side), and the preflight check is informational
+  only: a recognized source type (currently `.go`) gets checked before
+  you decide whether to confirm, but a warning never blocks the ticket
+  from issuing. `--ttl` raises the ticket's lifetime up to a 1-hour
+  ceiling (default 10 minutes); nothing longer is supported by design
+  -- a removal needing more review time belongs in TRACKING.md as its
+  own item, not a long-lived ticket outside the register.
+- **New: `repoman ed confirm TICKET-ID` redeems a pending ticket --
+  re-hashing the live file against the hash recorded at request time
+  and refusing, the same way `apply` refuses a stale handle, if the
+  file drifted since.** On a match, performs the removal in one atomic
+  write and records it via the shared journal exactly like `apply`
+  does, so `ed undo` reverts a confirmed niplines identically to any
+  other edit.
+- **New: `repoman ed cancel TICKET-ID` discards a pending ticket with
+  no write, ever, and is idempotent** -- cancelling an already-gone
+  ticket (unknown, already confirmed, cancelled, or expired) is a
+  no-op, not an error.
+- **Docs: `docs/repoman-040-editing.md` now covers the full
+  niplines/confirm/cancel flow**, with real captured worked examples
+  (a clean preflight pass, a gofmt warning, a stale-ticket refusal, and
+  cancel's idempotence), and gives `insert` its own line in the "which
+  one, when" table rather than folding it into `apply`'s.
+- **Tests: `pkg/ed/nippreview_test.go` covers the line-based/byte-offset
+  agreement `confirm`'s atomic write depends on across twelve
+  trailing-newline edge cases, and `pkg/ed/selftest.go` gained eight new
+  subprocess-based paths (20-27) exercising the full niplines/confirm/
+  cancel flow end-to-end** -- request-and-write, undo, single-use
+  redemption, cancel and its idempotence, an unknown ticket, a stale
+  ticket, and an invalid range. All 27 `ed selftest` paths and all 236
+  top-level acceptance-gate checks pass.
+
+## [0.15.0] - 2026-09-11
+
+Minor release: closes out every register item that was implemented
+and verified but never formally closed (twelve items across
+provenance/dependency-graph/kanban/ed-editing/locking), plus a real
+bug in waveprogress's own status parsing found while doing that
+closure. Minor rather than patch: no single change here is large,
+but this batches twelve accumulated closures plus new work-register
+behavior (T-39) in one release, and nothing here is a narrow
+single-issue patch. Register: T-01, T-02, T-03, T-04, T-05, T-08,
+T-20, T-21, T-22, T-26, T-30, T-31, T-39 -- full writeups in
+RESOLVED.md, not duplicated here.
+
+- **Closed: twelve items sitting at ☑ (implemented and verified,
+  never formally released) across five waves.** T-01/T-02/T-03/T-04
+  (Wave 1, provenance and gate hardening), T-05 (Wave 2, dependency
+  graph), T-08 (Wave 4, kanban dependency-order tiering), T-20/T-21/
+  T-22 (Wave 7, ed insert/append/prepend vocabulary and the niplines
+  storage design), T-26 (Wave 8, Claimed-by field), plus T-30 (board
+  --format json's null-legend validation failure) and T-31
+  (provenance-gated ed/strreplace write paths), neither linked to any
+  wave. All were genuinely implemented, built, and verified in prior
+  sessions but never run through `register close` -- this release
+  does that formally, moving each item's full record to RESOLVED.md
+  with its real closing version and date. Waves 1, 2, 4, and 5 (the
+  latter already complete) are now fully done and hidden from the
+  default wave view via `waveprogress --hide` (their work still
+  counts toward the overall total; `--include-hidden` still shows
+  them).
+- **Fix: waveprogress's own regexes couldn't see two of the
+  register's five legal status symbols, causing spurious "item found
+  nowhere" warnings and stale wave-row statuses.** Discovered while
+  closing the twelve items above -- `waveprogress --show` warned that
+  several items genuinely open in TRACKING.md at ☑ were "found in
+  neither TRACKING.md nor RESOLVED.md". `pkg/waveprogress/
+  waveprogress.go`'s `trackingRow` regex, which parses TRACKING.md's
+  register status column, used the character class `[✓◐☐]` --
+  missing `☑` (done, pending release) and `✗` (dropped) entirely, so
+  any item at either status silently fell out of the sync logic,
+  indistinguishable from an id that doesn't exist. (The other three
+  status regexes in the same file -- `rowRe`, `itemCol4Re`,
+  `waveRowRe` -- parse a wave-table row's own status cell, a
+  genuinely different three-valued domain, and were already correct.)
+  Fixed by widening `trackingRow`'s class to all five symbols and
+  adding a new `wavelevelStatus` helper that maps the register's
+  five-symbol legend down to a wave row's three-symbol vocabulary
+  (☑ reads as ◐: real progress, not yet closed; ✗ reads as ☐).
+  New tests `TestWavelevelStatus` and
+  `TestSyncWaveRowsFromRegister_PendingReleaseCorrectsRowToHalf`,
+  confirmed genuinely failing pre-fix via `git stash` (the fix's own
+  new function is undefined without it, so the build itself fails)
+  before confirming green post-fix. Register: T-39.
+
+## [0.14.12] - 2026-09-11
+
+Patch release: two independent fixes found while re-verifying the
+"gorepoman bugs" backlog against 0.14.11 -- one closes a genuine
+docs/UX gap in `addwave`, the other closes a real release-integrity
+gap between the two ways this project's binaries get built.
+
+- **Fix: `addwave` refused to run on a project's very first call,
+  instead of self-healing.** If `docs/WAVE_TRACKING.md` and
+  `docs/WAVE_PLAN.md` (or whatever `wave_tracking`/`wave_plan` in
+  `.repoman.json` point at) didn't exist yet, `addwave` hard-refused
+  with exit 1 and no files touched, naming an undocumented manual-seed
+  requirement -- the destructive partial-write behaviour this same
+  report originally flagged was already fixed before this release, but
+  the refuse-instead-of-self-heal gap it left behind was not. Fixed by
+  replacing the refusal with `ensureDocs`, which creates both files
+  with a minimal skeleton before adding the wave, announced on stdout
+  rather than done silently, mirroring the self-heal mechanism
+  `pkg/waveprogress/waveprogress.go` already carries on its own read
+  path (same skeleton text, so the two agree). `--dry-run` against a
+  project missing both files now produces a coherent preview from the
+  same in-memory skeleton, instead of crashing on a read of a file it
+  correctly declined to write. Documented in both `addwave --help` and
+  `docs/repoman-080-waves.md`, with a worked example. New selftest
+  coverage in `pkg/selftest/section29a.go` (10 checks, confirmed
+  genuinely failing pre-fix via `git stash`): fresh-project self-heal,
+  stdout naming both created files, the self-healed document's content
+  and structure, `waveprogress --check` independently agreeing the
+  result is already up to date, and `--dry-run` writing nothing to
+  disk. Register: T-37.
+- **Fix: the GitHub Pages mirror's binaries embedded a different
+  version string than the real GitHub Release binaries for the same
+  tag.** `.goreleaser.yaml` (used by the real tagged release) embeds
+  the version via `-X main.version={{ .Version }}`, and GoReleaser's
+  `.Version` template variable is the tag with its leading `v` already
+  stripped (e.g. `0.14.9`). `Makefile`'s `cross` target (used by the
+  Pages-mirror workflow) instead set `-X main.version=v$(VERSION)`,
+  prepending a `v` GoReleaser never adds (e.g. `v0.14.9`). Since
+  `-ldflags -X` compiles the string directly into the binary, this
+  one-character difference changed the binary bytes -- and therefore
+  the SHA256 in each build path's own `checksums.txt` -- for what was
+  meant to be the same release, even when built from identical source.
+  Fixed by dropping the hardcoded `v` from the Makefile so both paths
+  embed the bare `VERSION`-file value, matching GoReleaser's own
+  convention (the real Release path, which is what
+  `/releases/latest/download/` actually serves). No change needed on
+  the GoReleaser side. Register: T-38.
+
+## [0.14.11] - 2026-09-11
+
+Patch release: closes a real CLI-wiring gap found during a docs/CI
+audit -- three commands' own `-h` output never offered the live-fetch
+every sibling command has had since `pkg/webhelp` was introduced.
+
+- **Fix: `board -h`, `workspace -h`, and all three of `provenance`'s
+  help exits (top-level, `check`, `sanction`) never live-fetched their
+  doc chapter.** Every other command's `-h`/`--help` prints its own
+  embedded usage text, then unconditionally prints
+  `webhelp.SuppressionNote` and attempts a live fetch of the matching
+  chapter from this project's own docs site (see
+  `repoman-030-getting-started.md`, "`-h`/`--help`: live docs, with
+  two ways to skip them"). `board.go` and `workspace.go` never
+  imported `pkg/webhelp` at all; `provenance.go` imported it (for
+  `webhelp.NormalizeBriefFirst`) but never called
+  `webhelp.PrintIfAvailable` on any of its three help paths. The doc
+  chapters themselves (`repoman-085-board.md`,
+  `repoman-086-workspace.md`, `repoman-088-provenance.md`) were
+  always correct and correctly published by CI -- confirmed directly
+  against the live site at https://ha1tch.github.io/gorepoman/, still
+  serving 0.14.9 (the latest tag actually pushed), all 20 chapters
+  present and correctly linked. The gap was purely in the CLI's own
+  wiring, never in the docs or the publish pipeline. Fixed by adding
+  the missing import, wiring `webhelp.NormalizeBriefFirst` into every
+  affected `Run`/`runSanction`, and adding the `SuppressionNote` print
+  plus `PrintIfAvailable` call to all five help exit points.
+- **New: selftest coverage for webhelp wiring completeness
+  (`pkg/selftest/section21a.go`).** The existing webhelp regression
+  coverage (`section20`/`section21`) only ever drove `ed -h` and
+  `register -h` -- real coverage of the *mechanism*, but nothing that
+  would have caught a command silently missing the wiring entirely,
+  which is exactly what had happened here. The new section drives all
+  five now-fixed help paths against a local `httptest.Server` and
+  checks three properties per path: the suppression note prints
+  unconditionally, a genuine fetch actually succeeds with its content
+  visible, and `--brief` still suppresses it. Confirmed as real
+  regression coverage, not passing for the wrong reason: the new
+  checks were run against the pre-fix source (via `git stash`) and
+  genuinely failed, exit 1, before the fix was restored and
+  reconfirmed green.
+- Selftest: 211 -> 226 (15 new checks). Register: 23 open items (T-36
+  shipped in this release; see `RESOLVED.md`).
+
+## [0.14.10] - 2026-09-10
+
+Patch release: two confirmed bug fixes (B-13, B-14) and two xolu-team
+feature requests (FR-03, FR-04), all verified against direct repros
+of the original defects, with no regressions (selftest holds at
+211/211).
+
+- **Fix: B-13, UTF-8 truncation corruption.** Several preview/snippet
+  truncation sites across the codebase (`ed find`'s match preview,
+  `ed apply`/`append`/`prepend`/`insert`/`sub`'s change-summary
+  labels, `roles`' occurrence-line preview, `badcode`'s match
+  snippet in both its per-line and cross-line fold passes, and
+  `gomod`'s command-output preview) sliced text by a fixed byte
+  count rather than at a rune boundary, producing genuinely invalid
+  UTF-8 on stdout when the cut landed mid-codepoint -- confirmed via
+  direct repro with long runs of multi-byte block-drawing
+  characters. Fixed with a shared rune-boundary-safe
+  `truncateUTF8`/`ed.TruncateUTF8` helper, reused everywhere the
+  import graph allows and duplicated once (documented) where it
+  doesn't. New property-based regression coverage in `pkg/ed`,
+  `pkg/roles`, and `pkg/badcode` confirms every truncation point
+  never splits a rune, across ASCII, em-dashes, four-byte emoji, and
+  the original repro pattern.
+- **Fix: B-14, `workspace join` left a stale local entry on remote
+  failure.** `runJoin` wrote the local `.repoman.json` workspace
+  membership entry before validating the remote side (clone, read
+  `participants.json`); any failure after that write left a stale
+  entry with no rollback, and a retry was refused with "already a
+  member of workspace" even though the join had never actually
+  succeeded. Fixed by reordering: the local no-network dedupe check
+  stays first, all remote operations run next, and the local write
+  happens only once the remote side has genuinely succeeded --
+  including the "already a participant" case, which previously
+  returned success without recording local membership at all. New
+  regression coverage in `pkg/workspace` confirms a failed join
+  leaves no local entry, a subsequent retry succeeds cleanly, and
+  the already-a-participant path now records membership correctly.
+- **Feature: FR-03, `wave_complete_word` config key.** `waveStatusWord`
+  (the B-04 fix) hardcoded its "done" wording with no way for a
+  consuming project to keep its own established convention (e.g.
+  xolu's "complete") across an upgrade. A new `.repoman.json` key,
+  `wave_complete_word` (default `""`, meaning "done", so every
+  existing project is unaffected until it opts in), overrides only
+  the complete-status word; "not started"/"in progress" are
+  untouched.
+- **Feature: FR-04, register-driven wave-row status sync.** Nothing
+  previously corrected a wave table's own row-level status
+  (✓/◐/☐) when a linked register item's state changed outside
+  `register close`'s own direct wiring (T-19) -- e.g. `RESOLVED.md`
+  gaining a closure header by hand. `waveprogress` now re-derives
+  every row's status from `RESOLVED.md`'s closure headers and
+  `TRACKING.md`'s open-item rows before anything else runs, so the
+  table render, HTML render, summary-line regeneration, and
+  `--check` staleness comparison all see corrected rows with no
+  duplicated logic. A row whose linked id resolves in neither
+  document is left untouched and reported as a warning, never
+  guessed at; a row linking more than one id takes the least-done
+  member's status.
+- Both features are documented in `docs/repoman-090-configuration.md`
+  and `docs/repoman-080-waves.md`, with real worked CLI output.
+- Selftest: 211/211 (unchanged). Register: 22 open items -- T-32
+  through T-35 shipped in this release; see RESOLVED.md for the
+  full closure record of each (B-13, B-14, FR-03, FR-04).
+
 ## [0.14.9] - 2026-09-10
 
 Patch release: documentation-only. The Pages site and CLI --help text

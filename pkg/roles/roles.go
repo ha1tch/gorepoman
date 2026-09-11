@@ -1179,6 +1179,27 @@ See https://ha1tch.github.io/gorepoman/docs/repoman-050-roles.html
 for the full per-language reference and known limits.
 `
 
+// truncateUTF8 returns s truncated to at most maxBytes bytes, never
+// splitting a multi-byte UTF-8 rune. B-13 fix: Run's own line-preview
+// trim used to slice by raw byte count (s[:90]), which silently
+// produced invalid UTF-8 on stdout whenever the cut point landed
+// inside a multi-byte codepoint -- confirmed reproducible with long
+// runs of block-drawing characters (U+2591). Kept local to this
+// package (not shared with pkg/ed's identical helper) since roles
+// sits below ed in the import graph and pulling this into a new
+// shared package would be more machinery than a four-line fix
+// warrants.
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	b := s[:maxBytes]
+	for len(b) > 0 && !utf8.RuneStart(s[len(b)]) {
+		b = b[:len(b)-1]
+	}
+	return b
+}
+
 func Run(argv []string) int {
 	argv = webhelp.NormalizeBriefFirst(argv)
 	for _, a := range argv {
@@ -1205,10 +1226,7 @@ func Run(argv []string) int {
 	for _, occ := range Occurrences(term, paths, false) {
 		byRole[occ.Role]++
 		total++
-		lineTrim := strings.TrimSpace(occ.Line)
-		if len(lineTrim) > 90 {
-			lineTrim = lineTrim[:90]
-		}
+		lineTrim := truncateUTF8(strings.TrimSpace(occ.Line), 90)
 		fmt.Printf("%s:%d: [%s] %s\n", occ.Path, occ.LineNo, occ.Role, lineTrim)
 	}
 

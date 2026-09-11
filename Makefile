@@ -2,7 +2,7 @@ GO      ?= go
 BINARY  := repoman
 PKG     := ./cmd/repoman
 VERSION := $(shell cat VERSION 2>/dev/null || echo dev)
-LDFLAGS := -s -w -X main.version=v$(VERSION)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 
 # Matches .goreleaser.yaml's build matrix exactly -- keep the two in sync
 # if either changes. DragonFly BSD has no arm64 -- Go itself has no

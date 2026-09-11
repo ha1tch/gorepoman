@@ -13,6 +13,20 @@ across a small, already-understood set of files. This is the tool for "I
 found the exact span I want to change, let me change exactly that," and for
 the `mark`/`undo` checkpoint discipline around a multi-step campaign.
 
+**`ed insert`** — adding text next to a verified span without restating any
+of the matched text itself. Reach for this instead of `apply` whenever the
+change is "put something new before/after this," not "replace this with
+something else" — see below for why the distinction matters.
+
+**`ed niplines`/`confirm`/`cancel`** — removing a line range with no content
+anchor to verify against, where you want to see the removal rendered as a
+diff and (for a recognized source type) checked by a real formatter/vet
+pass *before* anything is written, not after. Two calls instead of one:
+this is the deliberate cost of a request/preview/confirm flow, worth paying
+specifically when a line-range deletion is the kind of edit `find`'s
+content-hash handle can't describe. See below for the full flow and why it
+isn't the default for every removal.
+
 **`strreplace`** (`str_replace_extended.py`) — batched, payload-driven
 substitution with format-aware syntax validation and an explicit role
 census check per operation. Reach for this when you're changing the same
@@ -305,6 +319,128 @@ def fetch(url, deadline=DEFAULT_TIMEOUT):
 
 Every occurrence renamed, none of them touched by an op that hadn't
 verified its role first.
+
+## `niplines`, `confirm`, `cancel`: removing a line range, with a preview you approve before anything is written
+
+A line range has no content anchor the way `find`'s handle does — there is
+no substring being matched, only a position. `niplines`/`confirm`/`cancel`
+handle that case as a deliberate two-phase flow instead of stretching
+`apply`'s single-call model to cover it: request a removal, see exactly
+what it would produce, then separately approve or discard it.
+
+### Phase 1: `niplines` previews, checks, and issues a ticket — writes nothing
+
+```
+$ repoman ed niplines server.go 6 9
+--- lines 3-12 of file (removing 6-9) ---
+     3 | import "fmt"
+     4 |
+     5 | const maxRetries = 3
+-    6 |
+-    7 | func deprecatedHelper() {
+-    8 | 	fmt.Println("this helper is no longer used")
+-    9 | }
+    10 |
+    11 | func main() {
+    12 | 	fmt.Println("starting up")
+
+preflight: clean (gofmt, go vet)
+
+ticket: nip-1  (expires 2026-09-11T03:27:43Z)
+nothing written. `repoman ed confirm nip-1` to apply, `repoman ed cancel nip-1` to discard.
+```
+
+The preflight check is advisory, never a refusal — recognized source types
+(currently `.go`, via `gofmt -l` and `go vet` against a scratch copy) get
+checked against the *post-removal* content before you decide whether to
+confirm. A file type with no registered checker reports
+`preflight: not available for .ext` rather than silently skipping the line;
+`niplines` always tells you whether it looked or not.
+
+A dirty result still issues a ticket — the check is information for you to
+weigh, not a gate:
+
+```
+$ repoman ed niplines server.go 5 5
+--- lines 2-8 of file (removing 5-5) ---
+     2 |
+     3 | import "fmt"
+     4 |
+-    5 | const maxRetries = 3
+     6 |
+     7 | func main() {
+     8 | 	fmt.Println("starting up")
+
+preflight WARNING (advisory -- confirm anyway if this is expected):
+  gofmt: would reformat this content
+
+ticket: nip-2  (expires 2026-09-11T03:27:52Z)
+nothing written. `repoman ed confirm nip-2` to apply, `repoman ed cancel nip-2` to discard.
+```
+
+### Phase 2: `confirm` redeems the ticket, or `cancel` discards it
+
+```
+$ repoman ed confirm nip-1
+confirmed nip-1: removed lines 6-9 from server.go
+```
+
+Recorded in the journal exactly like `apply` — `log` and `undo` treat it
+the same as any other edit:
+
+```
+$ repoman ed log
+txn 1  2026-09-11T03:17:47Z  niplines server.go  (1 edit(s))
+```
+
+`confirm` re-hashes the live file against the hash recorded when the
+ticket was issued, the same stale-handle discipline `apply`/`insert` use
+for a `find` handle. Anything that changed the file between `niplines` and
+`confirm` — including an edit through `ed` itself — invalidates the
+ticket:
+
+```
+$ repoman ed niplines server.go 5 5
+[...ticket: nip-2...]
+
+$ repoman ed append server.go --with "
+// a note added after the ticket was issued"
+appended to server.go: "\n// a note added after the ticket was is" (44 bytes)
+
+$ repoman ed confirm nip-2
+REFUSED: server.go changed since niplines was requested (stale ticket) -- the previewed diff no longer matches what confirm would apply. Re-run niplines for a fresh preview and ticket. Nothing written.
+```
+
+`cancel` discards a ticket with no write, ever, and is idempotent —
+cancelling twice, or cancelling something already confirmed or expired, is
+not an error:
+
+```
+$ repoman ed cancel nip-2
+cancelled nip-2. Nothing written.
+
+$ repoman ed confirm nip-2
+REFUSED: no pending ticket nip-2 (unknown, already confirmed/cancelled, or pruned)
+```
+
+### Why a ticket, and why it expires
+
+A ticket defaults to a 10-minute TTL — long enough for the same agent turn
+that requested the removal to also confirm it, short enough that a
+half-finished flow doesn't linger indefinitely. `--ttl` raises that up to a
+1-hour ceiling, for a human actually reading the preview before deciding.
+Nothing longer is supported on purpose: a removal that needs more review
+time than that belongs in `TRACKING.md` as its own tracked item, not as a
+longer-lived ticket sitting outside the register where nothing else can
+see it.
+
+This is also why `niplines`/`confirm`/`cancel` are not how `apply`/`sub`/
+`find` themselves work, and why they stay that way — a content-anchored
+edit already has a verifiable handle and a single-call model that's
+correct for it. The two-call ticket flow exists specifically for the case
+that model doesn't cover: a position-based removal with no anchor to
+re-verify in one shot, where a preview genuinely needs to be seen before
+the write happens.
 
 ## Never `sed`, never `awk`, never the bare string-replace primitive
 

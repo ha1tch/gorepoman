@@ -265,6 +265,108 @@ func SelfTest() int {
 		return fail("19 insert refuses malformed --after/--before combos, writes nothing", readFile())
 	}
 
-	fmt.Println("selftest: all 19 paths green")
+	// 20. niplines previews a removal, writes nothing, and issues a ticket.
+	beforeNiplines := readFile()
+	so, se, code = run("ed", "niplines", "t.md", "1", "1")
+	if !(code == 0 && readFile() == beforeNiplines) {
+		return fail("20 niplines previews and writes nothing", so+se+readFile())
+	}
+	if !strings.Contains(so, "ticket:") {
+		return fail("20 niplines issues a ticket", so+se)
+	}
+	nipTicket := ""
+	for _, ln := range strings.Split(so, "\n") {
+		if strings.HasPrefix(ln, "ticket:") {
+			tf := strings.Fields(ln)
+			if len(tf) >= 2 {
+				nipTicket = tf[1]
+			}
+		}
+	}
+	if nipTicket == "" {
+		return fail("20 niplines issues a ticket", "could not parse ticket id from: "+so)
+	}
+
+	// 21. confirm redeems the ticket: writes the removal and journals it.
+	so, se, code = run("ed", "confirm", nipTicket)
+	if !(code == 0 && readFile() != beforeNiplines) {
+		return fail("21 confirm redeems the ticket and writes", so+se+readFile())
+	}
+
+	// 22. undo restores a confirmed niplines exactly, same journal/undo path as apply.
+	so, se, code = run("ed", "undo")
+	if !(code == 0 && readFile() == beforeNiplines) {
+		return fail("22 undo restores a confirmed niplines exactly", so+se+readFile())
+	}
+
+	// 23. confirm refuses a ticket that was already redeemed (single-use).
+	so, se, code = run("ed", "confirm", nipTicket)
+	if !(code == 1 && strings.Contains(se, "REFUSED")) {
+		return fail("23 confirm refuses an already-redeemed ticket", so+se)
+	}
+
+	// 24. cancel discards a pending ticket with no write, and is idempotent.
+	so, _, _ = run("ed", "niplines", "t.md", "1", "1")
+	nipTicket = ""
+	for _, ln := range strings.Split(so, "\n") {
+		if strings.HasPrefix(ln, "ticket:") {
+			tf := strings.Fields(ln)
+			if len(tf) >= 2 {
+				nipTicket = tf[1]
+			}
+		}
+	}
+	if nipTicket == "" {
+		return fail("24 cancel discards a pending ticket", "could not parse ticket id from: "+so)
+	}
+	beforeCancel := readFile()
+	so, se, code = run("ed", "cancel", nipTicket)
+	if !(code == 0 && readFile() == beforeCancel) {
+		return fail("24 cancel discards a pending ticket, writes nothing", so+se+readFile())
+	}
+	so, se, code = run("ed", "confirm", nipTicket)
+	if !(code == 1 && strings.Contains(se, "REFUSED")) {
+		return fail("24 a cancelled ticket cannot later be confirmed", so+se)
+	}
+	so, se, code = run("ed", "cancel", nipTicket)
+	if !(code == 0 && strings.Contains(so, "already gone")) {
+		return fail("24 cancel is idempotent on an already-gone ticket", so+se)
+	}
+
+	// 25. confirm refuses an unknown ticket id, with no write.
+	so, se, code = run("ed", "confirm", "NIP-does-not-exist")
+	if !(code == 1 && strings.Contains(se, "REFUSED")) {
+		return fail("25 confirm refuses an unknown ticket id", so+se)
+	}
+
+	// 26. confirm refuses a stale ticket: the file changed since niplines was requested.
+	so, _, _ = run("ed", "niplines", "t.md", "1", "1")
+	nipTicket = ""
+	for _, ln := range strings.Split(so, "\n") {
+		if strings.HasPrefix(ln, "ticket:") {
+			tf := strings.Fields(ln)
+			if len(tf) >= 2 {
+				nipTicket = tf[1]
+			}
+		}
+	}
+	if nipTicket == "" {
+		return fail("26 confirm refuses a stale ticket", "could not parse ticket id from: "+so)
+	}
+	run("ed", "append", "t.md", "--with", "ZSTALEMARKER\n")
+	so, se, code = run("ed", "confirm", nipTicket)
+	if !(code == 1 && strings.Contains(se, "changed since niplines was requested")) {
+		return fail("26 confirm refuses a stale ticket (content drifted since request)", so+se)
+	}
+	run("ed", "undo")
+	run("ed", "cancel", nipTicket)
+
+	// 27. niplines refuses an invalid line range outright, issuing no ticket.
+	so, se, code = run("ed", "niplines", "t.md", "999", "1000")
+	if !(code == 1 && strings.Contains(se, "REFUSED")) {
+		return fail("27 niplines refuses an invalid line range", so+se)
+	}
+
+	fmt.Println("selftest: all 27 paths green")
 	return 0
 }

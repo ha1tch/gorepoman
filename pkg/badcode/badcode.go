@@ -255,10 +255,7 @@ func Check(paths []string, patterns []Pattern) []Match {
 			// Per-line pass: the precise, single-line matches.
 			for lineNo, line := range lines {
 				if strings.Contains(strings.ToLower(line), lp) {
-					snippet := strings.TrimSpace(line)
-					if len(snippet) > 120 {
-						snippet = snippet[:120]
-					}
+					snippet := ed.TruncateUTF8(strings.TrimSpace(line), 120)
 					matches = append(matches, Match{
 						Pattern:    patterns[i],
 						File:       f,
@@ -288,10 +285,7 @@ func Check(paths []string, patterns []Pattern) []Match {
 				if startLine == endLine {
 					continue // fully on one line -- the per-line pass already has it
 				}
-				snippet := joined[pos : pos+len(lp)]
-				if len(snippet) > 120 {
-					snippet = snippet[:120]
-				}
+				snippet := ed.TruncateUTF8(joined[pos:pos+len(lp)], 120)
 				matches = append(matches, Match{
 					Pattern: patterns[i],
 					File:    f,

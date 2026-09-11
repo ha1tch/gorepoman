@@ -330,17 +330,74 @@ func insertDefaultVisibility(root string, cfg config.Config, waveNum int) error 
 	return config.SaveKey(root, "wave_visibility", vis)
 }
 
-func requireDocs(trackingPath, planPath string) error {
-	var missing []string
+// waveTrackingSkeleton is the minimal valid shape waveprogress.go's
+// own "Progress at a glance" section expects -- copied verbatim from
+// its self-heal skeleton (pkg/waveprogress/waveprogress.go) rather
+// than duplicated with any drift, since the two must stay byte-
+// identical for waveprogress to recognize what addwave just created
+// without needing its own self-heal to fire immediately after.
+const waveTrackingSkeleton = "# Wave tracking\n\n## 1. Progress at a glance\n\n```\nplaceholder\n```\n\nOverall by item count: 0 of 0 items ≈ **0%**\n"
+
+// wavePlanSkeleton is deliberately minimal: insertPlanParagraph
+// already handles a plan document with no wave headings at all by
+// falling back to appending at end-of-file, so nothing more specific
+// than a title is required for the file to be usable.
+const wavePlanSkeleton = "# Wave plan\n"
+
+// ensureDocs replaces the old requireDocs, which hard-refused
+// (exit 1, no files touched) whenever WAVE_TRACKING.md/WAVE_PLAN.md
+// didn't exist yet -- correct in that it never corrupted anything,
+// but it left a real gap: this requirement was never documented in
+// -h text or repoman-080-waves.md, so satisfying it meant already
+// knowing the exact skeleton shape from reading source or selftest
+// fixtures. waveprogress.go already self-heals the same situation on
+// its own read path (see its own "B-05 fix" comment); this mirrors
+// that fix here, on addwave's write path, using the identical
+// skeleton text, so a project's very first `addwave` call -- with
+// neither file created yet -- now works with no manual seeding step.
+// dryRun is honored: nothing is created or written when set, exactly
+// like every other write this command performs under --dry-run.
+func ensureDocs(trackingPath, planPath string, dryRun bool) error {
+	trackingMissing := false
 	if fi, err := os.Stat(trackingPath); err != nil || fi.IsDir() {
-		missing = append(missing, trackingPath)
+		trackingMissing = true
 	}
+	planMissing := false
 	if fi, err := os.Stat(planPath); err != nil || fi.IsDir() {
-		missing = append(missing, planPath)
+		planMissing = true
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("wave-tracking and/or wave-plan document not found: %s -- set wave_tracking/wave_plan in .repoman.json and create them (see repoman/README.md for the expected shape) before adding a wave",
+	if !trackingMissing && !planMissing {
+		return nil
+	}
+	if dryRun {
+		var missing []string
+		if trackingMissing {
+			missing = append(missing, trackingPath)
+		}
+		if planMissing {
+			missing = append(missing, planPath)
+		}
+		fmt.Printf("(--dry-run: %s missing -- would be created with a minimal skeleton)\n",
 			strings.Join(missing, ", "))
+		return nil
+	}
+	if trackingMissing {
+		if err := os.MkdirAll(filepath.Dir(trackingPath), 0755); err != nil {
+			return fmt.Errorf("creating %s's parent directory: %w", trackingPath, err)
+		}
+		if err := os.WriteFile(trackingPath, []byte(waveTrackingSkeleton), 0644); err != nil {
+			return fmt.Errorf("creating %s: %w", trackingPath, err)
+		}
+		fmt.Printf("created %s (was missing -- minimal skeleton)\n", trackingPath)
+	}
+	if planMissing {
+		if err := os.MkdirAll(filepath.Dir(planPath), 0755); err != nil {
+			return fmt.Errorf("creating %s's parent directory: %w", planPath, err)
+		}
+		if err := os.WriteFile(planPath, []byte(wavePlanSkeleton), 0644); err != nil {
+			return fmt.Errorf("creating %s: %w", planPath, err)
+		}
+		fmt.Printf("created %s (was missing -- minimal skeleton)\n", planPath)
 	}
 	return nil
 }
@@ -360,6 +417,13 @@ func Run(argv []string) int {
 			fmt.Println("document's short pointer paragraph, with the wave number and item")
 			fmt.Println("numbers computed from the actual current state of both documents --")
 			fmt.Println("not supplied by the caller and not guessed.")
+			fmt.Println("")
+			fmt.Println("The very first addwave call on a project needs neither file to")
+			fmt.Println("already exist: if wave_tracking/wave_plan (see .repoman.json) point")
+			fmt.Println("at files that aren't there yet, this command creates both with a")
+			fmt.Println("minimal skeleton before adding the wave -- announced on stdout, not")
+			fmt.Println("a silent write. --dry-run still touches nothing on disk in that case;")
+			fmt.Println("it previews using the same skeleton content in memory instead.")
 			fmt.Println("")
 			fmt.Println("There is no separate command for putting an EXISTING register")
 			fmt.Println("ticket (a T-nn item) into a new wave -- that association is made")
@@ -486,7 +550,7 @@ func Run(argv []string) int {
 	trackingPath := filepath.Join(root, cfg.WaveTracking)
 	planPath := filepath.Join(root, cfg.WavePlan)
 
-	if err := requireDocs(trackingPath, planPath); err != nil {
+	if err := ensureDocs(trackingPath, planPath, dryRun); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -513,13 +577,27 @@ func Run(argv []string) int {
 
 	trackingText, err := os.ReadFile(trackingPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		if dryRun && os.IsNotExist(err) {
+			// ensureDocs deliberately left this unwritten under
+			// --dry-run (nothing is created on disk in dry-run mode,
+			// same as every other write this command makes) -- use
+			// the in-memory skeleton so the preview computation below
+			// still has real content to work from, rather than
+			// crashing on a file that was never going to exist yet.
+			trackingText = []byte(waveTrackingSkeleton)
+		} else {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 	}
 	planText, err := os.ReadFile(planPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		if dryRun && os.IsNotExist(err) {
+			planText = []byte(wavePlanSkeleton)
+		} else {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 	}
 
 	waveNum, err := nextWaveNumber(string(trackingText), string(planText), waveNumber)

@@ -26,6 +26,7 @@ import (
 	"github.com/ha1tch/gorepoman/pkg/register"
 	"github.com/ha1tch/gorepoman/pkg/report"
 	"github.com/ha1tch/gorepoman/pkg/waveprogress"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 // ProjectReport is one project's rolled-up status. RegisterError and
@@ -145,12 +146,15 @@ separate mechanism). See repoman-055-format.md.
 
 // Run implements `repoman board <dir> [<dir> ...] [--format ...]`.
 func Run(args []string) int {
+	args = webhelp.NormalizeBriefFirst(args)
 	format, args := report.ExtractFormat(args)
 	definitionPath := ""
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-h" || args[i] == "--help" {
 			fmt.Print(boardHelp)
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-085-board", args)
 			return 0
 		}
 		if args[i] == "--definition" {

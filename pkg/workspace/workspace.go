@@ -13,6 +13,7 @@ import (
 
 	"github.com/ha1tch/gorepoman/pkg/config"
 	"github.com/ha1tch/gorepoman/pkg/report"
+	"github.com/ha1tch/gorepoman/pkg/webhelp"
 )
 
 const participantsFile = "participants.json"
@@ -182,7 +183,8 @@ func runJoin(args []string) int {
 		projectName = filepath.Base(wd)
 	}
 
-	// Local side: this project's own .repoman.json.
+	// Local membership check first -- cheap, no network, and the
+	// right thing to refuse on before doing any remote work at all.
 	root, cfg, err := config.Load("")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error loading config:", err)
@@ -194,13 +196,17 @@ func runJoin(args []string) int {
 			return 1
 		}
 	}
-	cfg.Workspaces = append(cfg.Workspaces, config.Workspace{Name: name, Remote: remote, CredentialEnv: credentialEnv, ProjectName: projectName})
-	if err := config.SaveKey(root, "workspaces", cfg.Workspaces); err != nil {
-		fmt.Fprintln(os.Stderr, "error saving local workspace membership:", err)
-		return 1
-	}
 
-	// Remote side: the workspace's own participants.json.
+	// B-14 fix: the remote side is validated and updated FIRST, and
+	// local .repoman.json is only written once that has genuinely
+	// succeeded. Previously the local write happened before any of
+	// this, so a failure here (no participants.json yet on the
+	// remote, a clone failure, a push failure) left a stale
+	// workspace entry in .repoman.json with no rollback -- a retry
+	// then refused with "already a member", and the only way out was
+	// hand-editing the config. None of cloneWorkspace/loadParticipants/
+	// saveParticipants/commitAndPush depend on local state, so
+	// reordering changes nothing about the success path.
 	tmp, err := cloneWorkspace(remote)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error cloning workspace:", err)
@@ -213,22 +219,35 @@ func runJoin(args []string) int {
 		fmt.Fprintln(os.Stderr, "error reading workspace participants.json:", err)
 		return 1
 	}
-	if contains(p.Projects, projectName) {
-		fmt.Printf("workspace %q already lists %q as a participant\n", name, projectName)
-		return 0
+	alreadyParticipant := contains(p.Projects, projectName)
+	if !alreadyParticipant {
+		p.Projects = append(p.Projects, projectName)
+		if err := saveParticipants(tmp, p); err != nil {
+			fmt.Fprintln(os.Stderr, "error writing workspace participants.json:", err)
+			return 1
+		}
+		if err := commitAndPush(tmp, fmt.Sprintf("workspace: %s joins", projectName)); err != nil {
+			fmt.Fprintln(os.Stderr, "error pushing to workspace:", err)
+			fmt.Fprintln(os.Stderr, "nothing local was changed -- fix the problem above and retry")
+			return 1
+		}
 	}
-	p.Projects = append(p.Projects, projectName)
-	if err := saveParticipants(tmp, p); err != nil {
-		fmt.Fprintln(os.Stderr, "error writing workspace participants.json:", err)
-		return 1
-	}
-	if err := commitAndPush(tmp, fmt.Sprintf("workspace: %s joins", projectName)); err != nil {
-		fmt.Fprintln(os.Stderr, "error pushing to workspace:", err)
-		fmt.Fprintln(os.Stderr, "local .repoman.json was already updated -- leave and retry, or push the workspace side by hand")
+
+	// Remote side confirmed (either just joined, or already listed
+	// as a participant) -- now, and only now, record membership
+	// locally.
+	cfg.Workspaces = append(cfg.Workspaces, config.Workspace{Name: name, Remote: remote, CredentialEnv: credentialEnv, ProjectName: projectName})
+	if err := config.SaveKey(root, "workspaces", cfg.Workspaces); err != nil {
+		fmt.Fprintln(os.Stderr, "error saving local workspace membership:", err)
+		fmt.Fprintln(os.Stderr, "the remote side already lists this project as a participant -- fix the problem above and retry; retrying will not double-join the remote")
 		return 1
 	}
 
-	fmt.Printf("joined workspace %q as %q\n", name, projectName)
+	if alreadyParticipant {
+		fmt.Printf("workspace %q already lists %q as a participant; local membership recorded\n", name, projectName)
+	} else {
+		fmt.Printf("joined workspace %q as %q\n", name, projectName)
+	}
 	return 0
 }
 
@@ -336,10 +355,13 @@ func runList(format string) int {
 
 // Run implements `repoman workspace <join|leave|list> ...`.
 func Run(args []string) int {
+	args = webhelp.NormalizeBriefFirst(args)
 	format, args := report.ExtractFormat(args)
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
 			fmt.Print(help)
+			fmt.Println(webhelp.SuppressionNote)
+			webhelp.PrintIfAvailable(os.Stdout, "repoman-086-workspace", args)
 			return 0
 		}
 	}
